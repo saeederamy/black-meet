@@ -15,7 +15,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections = {}
         self.meeting_status = "active"
-        self.chat_history = [] # ذخیره تاریخچه چت
+        self.chat_history = [] 
 
     async def connect(self, websocket: WebSocket, client_id: str, role: str):
         await websocket.accept()
@@ -72,7 +72,6 @@ async def login_api(request: Request):
 async def websocket_endpoint(websocket: WebSocket, client_id: str, role: str):
     await manager.connect(websocket, client_id, role)
     
-    # ارسال تاریخچه چت به کاربری که تازه متصل شده
     if manager.chat_history:
         await websocket.send_text(json.dumps({"type": "chat-history", "history": manager.chat_history}))
     
@@ -91,7 +90,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, role: str):
                 if target_ws:
                     await target_ws.send_text(data)
             
-            elif message['type'] == 'cam-state':
+            elif message['type'] in ['cam-state', 'stop-screen']:
                  await manager.broadcast(data, exclude=websocket)
 
             elif message['type'] == 'chat':
@@ -103,7 +102,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, role: str):
                     "role": role
                 }
                 manager.chat_history.append(chat_payload)
-                if len(manager.chat_history) > 100: # نگه داشتن ۱۰۰ پیام آخر
+                if len(manager.chat_history) > 200: 
                     manager.chat_history.pop(0)
                 await manager.broadcast(json.dumps(chat_payload))
             
@@ -116,6 +115,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, role: str):
                     elif action == 'resume-meeting':
                         manager.meeting_status = "active"
                         await manager.broadcast(json.dumps({"type": "meeting-resumed"}))
+                    elif action == 'clear-chat':
+                        manager.chat_history = []
+                        await manager.broadcast(json.dumps({"type": "chat-cleared"}))
                     elif action in ['mute-mic', 'mute-cam']:
                         target_ws = manager.get_client(message['target_id'])
                         if target_ws:

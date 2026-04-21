@@ -1,6 +1,6 @@
 let ws;
 let localStream;
-let peerConnections = {};
+let peerConnections = {}; // ساختار جدید: key = peerId-streamType
 const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
 const clientId = Math.random().toString(36).substring(7);
 let myRole = 'user';
@@ -12,7 +12,6 @@ let isVideoMuted = false;
 let isMeetingActive = true;
 let isScreenSharing = false;
 let myScreenStream = null;
-let screenSenderMap = {}; 
 
 const SVGs = {
     micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
@@ -26,16 +25,13 @@ const SVGs = {
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
 document.getElementById('btn-cam').innerHTML = SVGs.camOn;
 
-// بستن منوهای سه‌نقطه وقتی جای دیگری کلیک شد
 document.addEventListener('click', (e) => {
     if (!e.target.matches('.three-dots-btn')) {
         document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
     }
 });
 
-function getInitials(name) {
-    return name ? name.substring(0, 2).toUpperCase() : 'U';
-}
+function getInitials(name) { return name ? name.substring(0, 2).toUpperCase() : 'U'; }
 
 async function login() {
     const userRaw = document.getElementById('username').value.trim();
@@ -63,7 +59,6 @@ async function login() {
 
             document.getElementById('login-wrapper').style.display = 'none';
             document.getElementById('meet-screen').style.display = 'flex';
-            document.getElementById('view-tabs').style.display = 'flex';
 
             await initMedia();
             connectWebSocket();
@@ -76,7 +71,6 @@ async function login() {
 
 function toggleChat() { document.getElementById('chat-sidebar').classList.toggle('show'); }
 
-// مدیریت منوی سه‌نقطه (Black Hub Style)
 function toggleMenu(menuId) {
     const menu = document.getElementById(menuId);
     const isShowing = menu.classList.contains('show');
@@ -84,19 +78,13 @@ function toggleMenu(menuId) {
     if (!isShowing) menu.classList.add('show');
 }
 
-// فیلتر کردن تب‌ها (همه / وب‌کم / اسکرین)
 function filterView(type, btnObj) {
-    // تغییر رنگ تب‌ها
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btnObj.classList.add('active');
-
-    // اعمال فیلتر روی کپسول‌ها
     document.querySelectorAll('.video-container').forEach(c => {
-        if (type === 'all') {
-            c.style.display = 'block';
-        } else {
-            const cType = c.getAttribute('data-type');
-            if (cType === type) c.style.display = 'block';
+        if (type === 'all') c.style.display = 'block';
+        else {
+            if (c.getAttribute('data-type') === type) c.style.display = 'block';
             else c.style.display = 'none';
         }
     });
@@ -106,7 +94,6 @@ function togglePin(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
     const isPinned = container.classList.contains('pinned');
-    
     document.querySelectorAll('.video-container').forEach(c => c.classList.remove('pinned'));
     if (!isPinned) container.classList.add('pinned');
 }
@@ -143,10 +130,13 @@ function connectWebSocket() {
     ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
         switch (message.type) {
+            case 'chat-history':
+                // لود کردن تاریخچه چت موقع ورود
+                message.history.forEach(msg => appendChat(msg, true));
+                break;
             case 'user-joined':
                 if (isMeetingActive) {
-                    createPeerConnection(message.client_id, true);
-                    // بلافاصله وضعیت دوربین خودمان را به شخص جدید اعلام می‌کنیم
+                    createPeerConnection(message.client_id, 'camera', true, localStream);
                     ws.send(JSON.stringify({ type: 'cam-state', state: isVideoMuted, target: message.client_id, senderId: clientId }));
                 }
                 break;
@@ -166,30 +156,25 @@ function connectWebSocket() {
                 appendChat(message);
                 break;
             case 'cam-state':
-                // وقتی کسی دوربینش را قطع/وصل می‌کند
-                const container = document.getElementById(`container-${message.senderId}-camera`); // پیش‌فرض استریم اول
+                const container = document.getElementById(`container-${message.senderId}-camera`);
                 if (container) {
                     if (message.state === true) container.classList.add('cam-off');
                     else container.classList.remove('cam-off');
                 }
                 break;
             case 'meeting-paused':
+                // ترفند پرده مشکی برای قطع موقت تماس بدون نابود کردن WebRTC
                 if (myRole !== 'admin') {
                     isMeetingActive = false;
-                    stopAllMediaAndConnections();
-                    document.getElementById('view-tabs').style.display = 'none';
-                    document.getElementById('main-workspace').style.display = 'none';
-                    document.getElementById('waiting-room').style.display = 'flex';
+                    document.getElementById('meeting-overlay').style.display = 'flex';
+                    if (!isAudioMuted) toggleAudio(true); // قطع اجباری میکروفون
+                    if (!isVideoMuted) toggleVideo(true); // قطع اجباری دوربین
                 }
                 break;
             case 'meeting-resumed':
                 if (myRole !== 'admin') {
                     isMeetingActive = true;
-                    document.getElementById('waiting-room').style.display = 'none';
-                    document.getElementById('main-workspace').style.display = 'flex';
-                    document.getElementById('view-tabs').style.display = 'flex';
-                    await initMedia();
-                    ws.send(JSON.stringify({ type: 'user-joined', client_id: clientId, role: myRole }));
+                    document.getElementById('meeting-overlay').style.display = 'none';
                 }
                 break;
             case 'force-action':
@@ -200,87 +185,58 @@ function connectWebSocket() {
     };
 }
 
-function stopAllMediaAndConnections() {
-    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    if (myScreenStream) stopScreenShare();
-    for (let id in peerConnections) peerConnections[id].close();
-    peerConnections = {};
-    document.querySelectorAll('.remote-video').forEach(e => e.remove());
-}
+// تغییر اصلی: ساخت کانکشن مجزا با استفاده از streamType (camera یا screen)
+function createPeerConnection(peerId, streamType, isInitiator, stream) {
+    const pcKey = `${peerId}-${streamType}`;
+    if (peerConnections[pcKey]) return peerConnections[pcKey];
 
-function toggleMeetingState() {
-    const btn = document.getElementById('btn-meeting-state');
-    if (isMeetingActive) {
-        ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
-        isMeetingActive = false;
-        for (let id in peerConnections) peerConnections[id].close();
-        peerConnections = {};
-        document.querySelectorAll('.remote-video').forEach(e => e.remove());
-        btn.innerHTML = SVGs.startCall;
-        btn.classList.remove('active-red');
-    } else {
-        ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
-        isMeetingActive = true;
-        btn.innerHTML = SVGs.endCall;
-        btn.classList.add('active-red');
+    const pc = new RTCPeerConnection(configuration);
+    peerConnections[pcKey] = pc;
+
+    if (stream) {
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
     }
-}
 
-function createPeerConnection(peerId, isInitiator) {
-    let pc = peerConnections[peerId];
-    if (!pc) {
-        pc = new RTCPeerConnection(configuration);
-        peerConnections[peerId] = pc;
+    pc.onicecandidate = e => {
+        if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }));
+    };
 
-        if (localStream) localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        if (myScreenStream) myScreenStream.getTracks().forEach(track => screenSenderMap[peerId] = pc.addTrack(track, myScreenStream));
+    pc.ontrack = e => {
+        if (e.streams && e.streams[0]) {
+            addRemoteVideo(peerId, e.streams[0], streamType);
+        }
+    };
 
-        pc.onicecandidate = e => {
-            if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', target: peerId, candidate: e.candidate, senderId: clientId }));
-        };
-
-        pc.ontrack = e => {
-            if (e.streams && e.streams.length > 0) {
-                const stream = e.streams[0];
-                // با ترفند ساده، استریم دوم یک کاربر را به عنوان اسکرین شیر در نظر می‌گیریم
-                const isScreen = document.getElementById(`container-${peerId}-camera`) ? true : false;
-                addRemoteVideo(peerId, stream, isScreen);
-                
-                stream.onremovetrack = () => {
-                    if (stream.getTracks().length === 0) {
-                        const sId = isScreen ? 'screen' : 'camera';
-                        const c = document.getElementById(`container-${peerId}-${sId}`);
-                        if (c) c.remove();
-                    }
-                };
-            }
-        };
-
-        pc.onnegotiationneeded = async () => {
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: pc.localDescription, senderId: clientId, senderName: myUsername }));
-            } catch(err) {}
-        };
+    if (isInitiator) {
+        pc.createOffer().then(offer => {
+            pc.setLocalDescription(offer);
+            ws.send(JSON.stringify({ type: 'offer', target: peerId, streamType: streamType, offer: offer, senderId: clientId, senderName: myUsername }));
+        });
     }
     return pc;
 }
 
 async function handleOffer(message) {
     const peerId = message.senderId;
+    const streamType = message.streamType;
     if (message.senderName) peerNames[peerId] = message.senderName;
-    const pc = peerConnections[peerId] || createPeerConnection(peerId, false);
+    
+    // اگر کسی اسکرین فرستاد، ما فقط دریافت کننده‌ایم
+    const streamToShare = streamType === 'camera' ? localStream : null; 
+    const pc = peerConnections[`${peerId}-${streamType}`] || createPeerConnection(peerId, streamType, false, streamToShare);
+    
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: pc.localDescription, senderId: clientId, senderName: myUsername }));
+        ws.send(JSON.stringify({ type: 'answer', target: peerId, streamType: streamType, answer: pc.localDescription, senderId: clientId, senderName: myUsername }));
     } catch(err) {}
 }
 
 async function handleAnswer(message) {
-    const pc = peerConnections[message.senderId];
+    const pcKey = `${message.senderId}-${message.streamType}`;
+    const pc = peerConnections[pcKey];
+    
     if (message.senderName) {
         peerNames[message.senderId] = message.senderName;
         document.querySelectorAll(`.name-${message.senderId}`).forEach(el => el.innerText = message.senderName);
@@ -292,26 +248,24 @@ async function handleAnswer(message) {
 }
 
 async function handleIceCandidate(message) {
-    const pc = peerConnections[message.senderId];
+    const pcKey = `${message.senderId}-${message.streamType}`;
+    const pc = peerConnections[pcKey];
     if (pc) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
 }
 
-// تولید کپسول بقیه کاربران به همراه حباب نام، سه‌نقطه و تفکیک وب‌کم/اسکرین
-function addRemoteVideo(peerId, stream, isScreen = false) {
-    const suffix = isScreen ? 'screen' : 'camera';
-    const containerId = `container-${peerId}-${suffix}`;
+function addRemoteVideo(peerId, stream, streamType) {
+    const containerId = `container-${peerId}-${streamType}`;
     if (document.getElementById(containerId)) return;
     
-    const displayName = peerNames[peerId] || `User ${peerId.substring(0,4)}`;
+    const displayName = peerNames[peerId] || `User`;
+    const isScreen = streamType === 'screen';
     const labelText = isScreen ? `${displayName}'s Screen` : displayName;
     
     const container = document.createElement('div');
     container.className = 'video-container remote-video';
     container.id = containerId;
-    container.setAttribute('data-type', suffix);
-    container.title = "Double click to fullscreen";
+    container.setAttribute('data-type', streamType);
 
-    // حباب نام برای زمان قطعی دوربین (فقط برای وب‌کم)
     if (!isScreen) {
         container.innerHTML += `
             <div class="avatar-bubble">
@@ -321,16 +275,15 @@ function addRemoteVideo(peerId, stream, isScreen = false) {
         `;
     }
 
-    // منوی سه‌نقطه
     let adminMenu = '';
     if (myRole === 'admin') {
         adminMenu = `
-            <button class="dropdown-item" onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-mic', target_id: '${peerId}' }))">🎙️ Mute Audio</button>
+            <button class="dropdown-item" onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-mic', target_id: '${peerId}' }))">🎙️ Mute Mic</button>
             <button class="dropdown-item danger" onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-cam', target_id: '${peerId}' }))">🚫 Block Camera</button>
         `;
     }
 
-    const menuId = `menu-${peerId}-${suffix}`;
+    const menuId = `menu-${peerId}-${streamType}`;
     container.innerHTML += `
         <div class="menu-wrapper">
             <button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button>
@@ -348,13 +301,13 @@ function addRemoteVideo(peerId, stream, isScreen = false) {
     container.appendChild(video);
 
     const label = document.createElement('div');
-    label.className = 'label';
+    label.className = `label ${isScreen ? 'screen-lbl' : ''}`;
     label.innerHTML = `<span class="name-${peerId}">${labelText}</span>`;
     container.appendChild(label);
 
     setupDoubleClickHandler(container);
     
-    // اگر در فیلتری غیر مرتبط هستیم، مخفی شود
+    // مدیریت نمایش بر اساس تب فعال
     const activeTab = document.querySelector('.tab-btn.active').innerText.toLowerCase();
     if (activeTab.includes('screen') && !isScreen) container.style.display = 'none';
     if (activeTab.includes('camera') && isScreen) container.style.display = 'none';
@@ -363,11 +316,16 @@ function addRemoteVideo(peerId, stream, isScreen = false) {
 }
 
 function removeUserVideo(peerId) {
-    if (peerConnections[peerId]) {
-        peerConnections[peerId].close();
-        delete peerConnections[peerId];
-    }
-    document.querySelectorAll(`[id^="container-${peerId}"]`).forEach(e => e.remove());
+    // حذف کانکشن‌های دوربین و اسکرین مربوط به این فرد
+    ['camera', 'screen'].forEach(type => {
+        const pcKey = `${peerId}-${type}`;
+        if (peerConnections[pcKey]) {
+            peerConnections[pcKey].close();
+            delete peerConnections[pcKey];
+        }
+        const cont = document.getElementById(`container-${peerId}-${type}`);
+        if(cont) cont.remove();
+    });
 }
 
 function toggleAudio(forceMute = false) {
@@ -377,10 +335,10 @@ function toggleAudio(forceMute = false) {
     
     const btn = document.getElementById('btn-mic');
     if (isAudioMuted) {
-        btn.classList.replace('active-orange', 'active-red');
+        btn.classList.replace('active-blue', 'active-red');
         btn.innerHTML = SVGs.micOff;
     } else {
-        btn.classList.replace('active-red', 'active-orange');
+        btn.classList.replace('active-red', 'active-blue');
         btn.innerHTML = SVGs.micOn;
     }
 }
@@ -390,60 +348,81 @@ function toggleVideo(forceMute = false) {
     isVideoMuted = forceMute ? true : !isVideoMuted;
     localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
     
-    // ارسال وضعیت دوربین ما برای بقیه تا حباب نام را ببینند
     ws.send(JSON.stringify({ type: 'cam-state', state: isVideoMuted, target: 'all', senderId: clientId }));
 
     const btn = document.getElementById('btn-cam');
     const localCont = document.getElementById('local-container');
     
     if (isVideoMuted) {
-        btn.classList.replace('active-orange', 'active-red');
+        btn.classList.replace('active-blue', 'active-red');
         btn.innerHTML = SVGs.camOff;
         localCont.classList.add('cam-off');
         localCont.classList.remove('pip');
     } else {
-        btn.classList.replace('active-red', 'active-orange');
+        btn.classList.replace('active-red', 'active-blue');
         btn.innerHTML = SVGs.camOn;
         localCont.classList.remove('cam-off');
     }
 }
 
+function toggleMeetingState() {
+    const btn = document.getElementById('btn-meeting-state');
+    if (isMeetingActive) {
+        ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
+        isMeetingActive = false;
+        btn.innerHTML = SVGs.startCall;
+        btn.classList.replace('active-red', 'active-blue');
+    } else {
+        ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
+        isMeetingActive = true;
+        btn.innerHTML = SVGs.endCall;
+        btn.classList.replace('active-blue', 'active-red');
+    }
+}
+
+// حل مشکل اسکرین شیر با ایجاد کانکشن مجازی
 async function toggleScreenShare() {
     if (!isScreenSharing) {
         try {
             myScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-            const screenTrack = myScreenStream.getVideoTracks()[0];
             
-            for (let id in peerConnections) {
-                const pc = peerConnections[id];
-                screenSenderMap[id] = pc.addTrack(screenTrack, myScreenStream);
-            }
+            // برای هر نفر در روم، یک کانکشن اختصاصی از نوع screen می‌سازیم
+            Object.keys(peerConnections).forEach(pcKey => {
+                if (pcKey.endsWith('-camera')) {
+                    const peerId = pcKey.split('-')[0];
+                    createPeerConnection(peerId, 'screen', true, myScreenStream);
+                }
+            });
             
             addLocalScreenShare(myScreenStream);
             isScreenSharing = true;
-            document.getElementById('btn-share').classList.add('active-blue');
-            screenTrack.onended = stopScreenShare;
+            document.getElementById('btn-share').classList.add('active-orange');
+
+            myScreenStream.getVideoTracks()[0].onended = stopScreenShare;
         } catch (error) {}
-    } else { stopScreenShare(); }
+    } else {
+        stopScreenShare();
+    }
 }
 
 function stopScreenShare() {
     if (!isScreenSharing) return;
     if (myScreenStream) myScreenStream.getTracks().forEach(t => t.stop());
     
-    for (let id in peerConnections) {
-        if (screenSenderMap[id] && peerConnections[id]) {
-            peerConnections[id].removeTrack(screenSenderMap[id]);
+    // قطع کردن تمام کانکشن‌های مربوط به اسکرین خودمان
+    Object.keys(peerConnections).forEach(pcKey => {
+        if (pcKey.endsWith('-screen')) {
+            peerConnections[pcKey].close();
+            delete peerConnections[pcKey];
         }
-    }
-    screenSenderMap = {};
+    });
     myScreenStream = null;
     
     const localScreenCont = document.getElementById('local-screen-container');
     if (localScreenCont) localScreenCont.remove();
     
     isScreenSharing = false;
-    document.getElementById('btn-share').classList.remove('active-blue');
+    document.getElementById('btn-share').classList.remove('active-orange');
 }
 
 function addLocalScreenShare(stream) {
@@ -471,13 +450,12 @@ function addLocalScreenShare(stream) {
     container.appendChild(video);
 
     const label = document.createElement('div');
-    label.className = 'label';
+    label.className = 'label screen-lbl';
     label.innerHTML = `<span>Your Screen</span>`;
     container.appendChild(label);
 
     setupDoubleClickHandler(container);
     document.getElementById('video-grid').appendChild(container);
-    togglePin('local-screen-container');
 }
 
 function sendChat() {
@@ -487,23 +465,30 @@ function sendChat() {
         input.value = '';
     }
 }
-document.getElementById('chat-input')?.addEventListener('keypress', function (e) { if (e.key === 'Enter') sendChat(); });
 
-function appendChat(msg) {
+document.getElementById('chat-input')?.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') sendChat();
+});
+
+function appendChat(msg, isHistory = false) {
     const chatBox = document.getElementById('chat-messages');
-    let senderName = msg.senderName || (msg.role === 'admin' ? 'Host' : `User`);
+    let senderName = msg.senderName || (msg.role === 'admin' ? 'Admin' : `User`);
     const isMe = msg.sender === clientId;
     if (isMe) senderName = 'You';
     
     chatBox.innerHTML += `<div class="chat-msg ${isMe ? 'me' : ''}"><b>${senderName}</b> ${msg.text}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
     
-    if(!document.getElementById('chat-sidebar').classList.contains('show')) {
-        const chatBtn = document.querySelector('[title="Open Terminal"]');
-        if(chatBtn) {
-            chatBtn.style.transform = "scale(1.2)";
-            chatBtn.style.boxShadow = "0 0 20px rgba(0, 229, 255, 0.6)";
-            setTimeout(() => { chatBtn.style.transform = "scale(1)"; chatBtn.style.boxShadow = "none";}, 1000);
+    if (!isHistory) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+        if(!document.getElementById('chat-sidebar').classList.contains('show')) {
+            const chatBtn = document.querySelector('[title="Open Chat"]');
+            if(chatBtn) {
+                chatBtn.style.transform = "scale(1.2)";
+                chatBtn.style.color = "var(--c-blue)";
+                setTimeout(() => { chatBtn.style.transform = "scale(1)"; chatBtn.style.color = "var(--c-white)";}, 1000);
+            }
         }
+    } else {
+        chatBox.scrollTop = chatBox.scrollHeight;
     }
 }

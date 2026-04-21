@@ -3,26 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Black Meet - Glossy Pro</title>
+    <title>Black Meet - Orange Pro</title>
     <style>
         :root {
             --bg-dark: #050505;
-            --glass-bg: rgba(255, 255, 255, 0.06);
-            --glass-border: rgba(255, 255, 255, 0.15);
-            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --orange-theme: #f97316; /* رنگ نارنجی جذاب */
+            --orange-glow: rgba(249, 115, 22, 0.3);
             --text-light: #ffffff;
             --btn-blue: #3b82f6;
             --btn-red: #ef4444;
-            --btn-green: #10b981;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
 
         body {
             background-color: var(--bg-dark);
-            background-image: 
-                radial-gradient(circle at 15% 50%, rgba(255, 255, 255, 0.04), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.04), transparent 25%);
+            background-image: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.05), transparent 40%);
             color: var(--text-light);
             height: 100vh; height: 100dvh; 
             display: flex; flex-direction: column; overflow: hidden;
@@ -30,101 +28,100 @@
 
         .glass-panel {
             background: var(--glass-bg); backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-border);
-            border-radius: 16px; box-shadow: var(--glass-shadow);
+            border: 1px solid var(--glass-border); border-radius: 20px;
         }
 
         /* --- Login Screen --- */
         #login-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        #login-screen { width: 100%; max-width: 400px; padding: 40px 30px; text-align: center; display: flex; flex-direction: column; gap: 20px; }
-        #login-screen h2 { font-size: 26px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 15px rgba(255,255,255,0.3); }
+        #login-screen { width: 100%; max-width: 400px; padding: 40px; text-align: center; display: flex; flex-direction: column; gap: 20px; }
+        #login-screen h2 { font-size: 28px; color: var(--orange-theme); letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 15px var(--orange-glow); }
         
         input {
             width: 100%; padding: 15px; background: rgba(0, 0, 0, 0.6);
-            border: 1px solid var(--glass-border); border-radius: 10px;
+            border: 1px solid var(--glass-border); border-radius: 12px;
             color: white; font-size: 16px; outline: none; transition: 0.3s;
         }
-        input:focus { border-color: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        input:focus { border-color: var(--orange-theme); box-shadow: 0 0 10px var(--orange-glow); }
         
         .btn-primary {
-            background: #fff; color: #000; border: none; padding: 15px;
-            border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s;
+            background: var(--orange-theme); color: #000; border: none; padding: 15px;
+            border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s;
         }
-        .btn-primary:hover { background: #e2e2e2; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+        .btn-primary:hover { background: #ea580c; box-shadow: 0 0 15px var(--orange-glow); color: white;}
 
         /* --- Meet Screen & Workspace --- */
         #meet-screen { display: none; flex-direction: column; height: 100%; width: 100%; }
         #waiting-room { display: none; flex: 1; align-items: center; justify-content: center; flex-direction: column; font-size: 22px; color: #bbb; text-align: center; padding: 20px;}
         
-        .workspace { flex: 1; display: flex; padding: 20px; gap: 20px; overflow: hidden; position: relative;}
+        .workspace { flex: 1; display: flex; padding: 25px; gap: 20px; overflow: hidden; position: relative;}
 
+        /* گرید ویدیوها با سایز بزرگتر */
         #video-grid {
-            flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px; align-content: center; overflow-y: auto; padding-right: 5px;
+            flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 20px; align-content: center; overflow-y: auto; padding-right: 5px;
         }
 
+        /* تم کپسولی نارنجی برای ویدیوها */
         .video-container {
-            position: relative; background: rgba(0,0,0,0.5); border-radius: 12px;
-            overflow: hidden; aspect-ratio: 16 / 9; border: 1px solid var(--glass-border);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: all 0.3s ease;
+            position: relative; background: rgba(0,0,0,0.8);
+            border-radius: 35px; /* گوشه‌های کاملاً گرد (کپسول) */
+            overflow: hidden; aspect-ratio: 16 / 9; 
+            border: 2px solid var(--orange-theme);
+            box-shadow: 0 8px 25px var(--orange-glow); transition: all 0.3s ease;
         }
 
-        /* رفع مشکل کراپ: استفاده از contain */
         video { width: 100%; height: 100%; object-fit: contain; background: #000; }
         
         .label {
-            position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(4px); padding: 5px 12px; border-radius: 6px;
-            font-size: 13px; border: 1px solid rgba(255,255,255,0.1); font-weight: bold;
+            position: absolute; bottom: 15px; left: 20px; background: rgba(0,0,0,0.8);
+            padding: 6px 15px; border-radius: 20px; font-size: 14px; 
+            border: 1px solid var(--orange-theme); color: var(--orange-theme); font-weight: bold;
         }
 
-        /* دکمه‌های ادمین روی ویدیوهای بقیه */
         .admin-actions {
-            position: absolute; top: 10px; left: 10px; display: flex; gap: 5px;
+            position: absolute; top: 15px; left: 20px; display: flex; gap: 8px;
         }
         .admin-actions button {
-            background: rgba(0,0,0,0.6); color: white; border: 1px solid var(--glass-border);
-            padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 11px;
+            background: rgba(0,0,0,0.8); color: white; border: 1px solid var(--glass-border);
+            padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight:bold; transition: 0.2s;
         }
-        .admin-actions button:hover { background: rgba(255,0,0,0.6); }
+        .admin-actions button:hover { background: var(--btn-red); border-color: var(--btn-red); }
 
         .pin-btn {
-            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6);
-            border: 1px solid var(--glass-border); color: white; width: 32px; height: 32px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10;
+            position: absolute; top: 15px; right: 20px; background: rgba(0,0,0,0.8);
+            border: 1px solid var(--glass-border); color: white; width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; transition: 0.2s;
         }
-        .pin-btn.active { background: #fff; color: #000; }
-        .pin-btn svg { width: 16px; height: 16px; fill: currentColor; }
+        .pin-btn.active { background: var(--orange-theme); border-color: var(--orange-theme); color: #000; }
+        .pin-btn svg { width: 18px; height: 18px; fill: currentColor; }
 
-        /* استایل‌های پین و فول‌اسکرین با CSS (برای کارکرد صحیح PiP) */
-        .video-container.pinned { grid-column: 1 / -1; height: 60vh; }
-        .video-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: calc(100dvh - 90px); z-index: 100; border-radius: 0; }
+        /* استایل‌های پین و فول‌اسکرین */
+        .video-container.pinned { grid-column: 1 / -1; height: 65vh; border-radius: 20px;}
+        .video-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: calc(100dvh - 90px); z-index: 100; border-radius: 0; border: none; }
         
-        /* پاپ‌آپ ویدیوی خودمان (PiP) */
+        /* PiP */
         .video-container.pip {
-            position: fixed; bottom: 110px; right: 20px; width: 160px; height: auto;
-            aspect-ratio: 16/9; z-index: 1001; border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.8); border: 2px solid rgba(255,255,255,0.2);
+            position: fixed; bottom: 110px; right: 25px; width: 200px; height: auto;
+            aspect-ratio: 16/9; z-index: 1001; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9); border: 2px solid var(--orange-theme);
         }
 
         /* --- Sidebar Chat --- */
-        .sidebar {
-            width: 320px; display: none; flex-direction: column;
-        }
+        .sidebar { width: 340px; display: none; flex-direction: column; }
         .sidebar.show { display: flex; }
-        .chat-header { font-weight: bold; padding: 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; letter-spacing: 1px;}
-        .close-chat { background: none; border: none; cursor: pointer; font-size: 24px; color: #fff;}
-        #chat-messages { flex: 1; overflow-y: auto; font-size: 14px; padding: 15px 5px 15px 15px;}
-        .chat-msg { margin-bottom: 12px; line-height: 1.5; color: #ddd; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px;}
-        .chat-msg b { color: #fff; display: block; margin-bottom: 4px; font-size: 12px; color: var(--btn-blue);}
+        .chat-header { font-weight: bold; padding: 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center;}
+        .close-chat { background: none; border: none; cursor: pointer; font-size: 26px; color: #fff;}
+        #chat-messages { flex: 1; overflow-y: auto; font-size: 14px; padding: 15px;}
+        .chat-msg { margin-bottom: 12px; line-height: 1.5; color: #ddd; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 12px; border-left: 3px solid var(--orange-theme);}
+        .chat-msg b { color: var(--orange-theme); display: block; margin-bottom: 5px; font-size: 13px;}
         .chat-input { display: flex; gap: 10px; margin-top: 10px; padding: 15px; border-top: 1px solid var(--glass-border);}
-        .chat-input input { flex: 1; padding: 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white;}
-        .chat-input button { background: #fff; color: #000; border: none; border-radius: 8px; padding: 0 15px; font-weight: bold; cursor: pointer;}
+        .chat-input input { flex: 1; padding: 12px 15px; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: white;}
+        .chat-input button { background: var(--orange-theme); color: #000; border: none; border-radius: 12px; padding: 0 18px; font-weight: bold; cursor: pointer;}
 
         /* --- Bottom Bar --- */
         .bottom-bar {
             height: 90px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-            gap: 15px; background: rgba(5, 5, 5, 0.8);
+            gap: 15px; background: rgba(0, 0, 0, 0.85);
             border-top: 1px solid var(--glass-border); backdrop-filter: blur(20px); position: relative; z-index: 150;
         }
 
@@ -138,15 +135,17 @@
 
         .ctrl-btn.active-blue { background: var(--btn-blue); border-color: var(--btn-blue); }
         .ctrl-btn.active-red { background: var(--btn-red); border-color: var(--btn-red); }
-        .ctrl-btn.active-green { background: var(--btn-green); border-color: var(--btn-green); }
+        .ctrl-btn.active-orange { background: var(--orange-theme); border-color: var(--orange-theme); color: #000;}
 
-        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
 
         @media (max-width: 768px) {
-            #video-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-            .sidebar { position: fixed; top: 0; left: 0; width: 100vw; height: calc(100dvh - 90px); z-index: 200; border-radius: 0; background: rgba(10,10,10,0.95); }
-            .video-container.pip { width: 100px; bottom: 100px; right: 10px; }
+            .workspace { padding: 10px; }
+            #video-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;}
+            .video-container { border-radius: 20px; }
+            .sidebar { position: fixed; top: 0; left: 0; width: 100vw; height: calc(100dvh - 90px); z-index: 200; border-radius: 0; background: rgba(5,5,5,0.98); }
+            .video-container.pip { width: 120px; bottom: 100px; right: 10px; border-radius: 15px;}
         }
     </style>
 </head>
@@ -155,24 +154,23 @@
     <div id="login-wrapper">
         <div id="login-screen" class="glass-panel">
             <h2>Black Meet</h2>
-            <p style="color: #999; font-size: 14px; margin-bottom: 10px;">Glossy Workspace</p>
+            <p style="color: #999; font-size: 14px; margin-bottom: 10px;">Premium Workspace</p>
             <input type="text" id="username" placeholder="Your Name" autocomplete="off" autocapitalize="words">
             <input type="password" id="password" placeholder="Password">
-            <button class="btn-primary" onclick="login()">Connect</button>
+            <button class="btn-primary" onclick="login()">Connect Session</button>
         </div>
     </div>
 
     <div id="meet-screen">
         <div id="waiting-room">
-            <svg style="width: 64px; fill: #fff; margin-bottom: 20px; opacity: 0.5;" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-            <p>Meeting Paused</p>
-            <p style="font-size: 15px; margin-top: 10px; color: #888;">Waiting for host...</p>
+            <p>Session Paused by Admin</p>
+            <p style="font-size: 15px; margin-top: 10px; color: #888;">Please wait to be reconnected...</p>
         </div>
 
         <div class="workspace" id="main-workspace">
             <div id="video-grid">
                 <div class="video-container" id="local-container" title="Double click to fullscreen">
-                    <button class="pin-btn" onclick="togglePin('local')" title="Pin video">
+                    <button class="pin-btn" onclick="togglePin('local-container')" title="Pin video">
                         <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
                     </button>
                     <video id="local-video" autoplay muted playsinline></video>
@@ -194,7 +192,7 @@
         </div>
         
         <div class="bottom-bar">
-            <button class="ctrl-btn active-green" id="btn-mic" onclick="toggleAudio()" title="Microphone"></button>
+            <button class="ctrl-btn active-orange" id="btn-mic" onclick="toggleAudio()" title="Microphone"></button>
             <button class="ctrl-btn active-blue" id="btn-cam" onclick="toggleVideo()" title="Camera"></button>
             <button class="ctrl-btn" onclick="toggleScreenShare()" title="Share Screen" id="btn-share">
                 <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM5 15h3v3h8v-3h3l-7-7-7 7z"/></svg>

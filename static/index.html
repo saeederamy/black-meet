@@ -22,7 +22,6 @@
 
         .glass-panel { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 20px; }
 
-        /* Login Screen */
         #login-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10;}
         #login-screen { width: 100%; max-width: 400px; padding: 45px 35px; text-align: center; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
         #login-screen h2 { font-size: 32px; letter-spacing: 2px; font-weight: 800; text-transform: uppercase; }
@@ -39,10 +38,7 @@
         .rooms-header h2 { font-size: 24px; }
         .rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; overflow-y: auto; padding-right: 10px;}
         
-        .room-card { 
-            background: rgba(0,0,0,0.6); border: 1px solid var(--glass-border); border-radius: 16px; padding: 20px; 
-            display: flex; flex-direction: column; gap: 15px; transition: 0.3s; cursor: pointer; position: relative;
-        }
+        .room-card { background: rgba(0,0,0,0.6); border: 1px solid var(--glass-border); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 15px; transition: 0.3s; cursor: pointer; position: relative;}
         .room-card:hover { border-color: var(--c-orange); transform: translateY(-3px); box-shadow: 0 5px 20px rgba(249,115,22,0.15);}
         .room-card h3 { font-size: 18px; color: var(--c-white); margin-right: 30px;}
         .room-card .join-btn { background: rgba(255,255,255,0.1); color: white; border:none; padding: 10px; border-radius: 8px; font-weight:bold; transition: 0.2s;}
@@ -52,10 +48,7 @@
         .is-admin .room-admin-tools { display: block; }
         .r-menu-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; padding: 5px;}
         .r-menu-btn:hover { color: var(--c-white); }
-        .r-dropdown {
-            position: absolute; top: 30px; right: 0; background: var(--c-dark); border: 1px solid var(--glass-border); 
-            border-radius: 8px; padding: 5px; display: none; flex-direction: column; min-width: 140px; z-index: 999; box-shadow: 0 10px 30px rgba(0,0,0,0.9);
-        }
+        .r-dropdown { position: absolute; top: 30px; right: 0; background: var(--c-dark); border: 1px solid var(--glass-border); border-radius: 8px; padding: 5px; display: none; flex-direction: column; min-width: 140px; z-index: 999; box-shadow: 0 10px 30px rgba(0,0,0,0.9);}
         .r-dropdown.show { display: flex; }
         .r-dropdown button { background: transparent; border: none; color: var(--c-white); padding: 8px; text-align: left; cursor: pointer; border-radius: 4px; font-size: 13px;}
         .r-dropdown button:hover { background: rgba(255,255,255,0.1); color: var(--c-blue);}
@@ -70,8 +63,7 @@
         .modal-actions button { flex: 1; padding: 12px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;}
         .modal-actions .cancel { background: rgba(255,255,255,0.1); color: white;}
 
-        /* --- Meeting Area --- */
-        #meeting-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.95); backdrop-filter: blur(10px); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        #meeting-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); backdrop-filter: blur(20px); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; }
         #meeting-overlay h1 { color: var(--c-white); font-size: 28px; margin-bottom: 10px;}
         #meeting-overlay p { color: var(--text-muted); font-size: 16px;}
 
@@ -91,11 +83,7 @@
         #video-grid.grid-5, #video-grid.grid-6 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
         #video-grid.grid-many { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); grid-auto-rows: minmax(200px, 1fr);}
 
-        .video-container {
-            position: relative; background: var(--c-dark); border-radius: 24px;
-            overflow: hidden; border: 1px solid var(--glass-border); width: 100%; height: 100%;
-            transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-        }
+        .video-container { position: relative; background: var(--c-dark); border-radius: 24px; overflow: hidden; border: 1px solid var(--glass-border); width: 100%; height: 100%; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
         .video-container[data-type="camera"] video { object-fit: cover; }
         .video-container[data-type="screen"] video { object-fit: contain; }
         
@@ -116,7 +104,7 @@
         .menu-wrapper { position: absolute; top: 15px; right: 15px; z-index: 20; transition: opacity 0.3s;}
         .three-dots-btn { background: rgba(0,0,0,0.6); border: 1px solid var(--glass-border); color: var(--c-white); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; font-weight: bold; }
         .three-dots-btn:hover { background: var(--c-white); color: var(--c-black);}
-        .dropdown-menu { position: absolute; top: 45px; right: 0; background: rgba(15,15,18,0.95); border: 1px solid var(--glass-border); border-radius: 12px; padding: 8px; min-width: 140px; display: none; flex-direction: column; gap: 5px; box-shadow: 0 10px 30px rgba(0,0,0,0.9); z-index: 999;}
+        .dropdown-menu { position: absolute; top: 45px; right: 0; background: rgba(15,15,18,0.95); border: 1px solid var(--glass-border); border-radius: 12px; padding: 8px; min-width: 140px; display: none; flex-direction: column; gap: 5px; box-shadow: 0 10px 30px rgba(0,0,0,0.9); }
         .dropdown-menu.show { display: flex; }
         .dropdown-item { background: transparent; border: none; color: var(--c-white); padding: 8px 12px; text-align: left; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; }
         .dropdown-item:hover { background: rgba(255,255,255,0.1); color: var(--c-blue);}
@@ -128,6 +116,7 @@
         .video-container.fullscreen video { object-fit: contain; }
         .video-container.fullscreen .menu-wrapper, .video-container.fullscreen .label { opacity: 0; pointer-events: none; transition: opacity 0.4s;}
         .video-container.fullscreen:hover .menu-wrapper, .video-container.fullscreen:hover .label { opacity: 1; pointer-events: auto; }
+        
         .video-container.pip { position: fixed; bottom: 30px; right: 30px; width: 220px; height: 125px; z-index: 10000; border-radius: 16px; box-shadow: 0 15px 40px rgba(0,0,0,0.9); border: 2px solid var(--c-blue); }
 
         /* --- Sidebar --- */
@@ -168,7 +157,6 @@
         .btn-dl { background: var(--c-blue); color: white;}
         .btn-del { background: var(--c-red); color: white;}
 
-        /* --- Bottom Bar --- */
         .bottom-bar { height: 90px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 15px; background: rgba(3, 3, 3, 0.95); border-top: 1px solid var(--glass-border); z-index: 150;}
         .ctrl-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--c-white); width: 54px; height: 54px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
         .ctrl-btn:hover { background: rgba(255,255,255,0.1); transform: scale(1.08); }
@@ -256,6 +244,7 @@
 
         <div class="workspace" id="main-workspace">
             <div id="video-grid" class="grid-1">
+                
                 <div class="video-container" id="local-container" data-type="camera" title="Double click to expand">
                     <div class="avatar-bubble">
                         <div class="avatar-circle" id="local-avatar">U</div>
@@ -274,6 +263,7 @@
                         You (<span id="role-display"></span>)
                     </div>
                 </div>
+
             </div>
 
             <div class="sidebar glass-panel" id="main-sidebar">

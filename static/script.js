@@ -14,7 +14,6 @@ let isScreenSharing = false;
 let myScreenStream = null;
 let screenSenderMap = {}; 
 
-// متغیرهای ضبط (DVR) و آنالیز صدا
 let mediaRecorder;
 let recordedChunks = [];
 let audioContext;
@@ -34,6 +33,14 @@ document.addEventListener('click', (e) => {
     if (!e.target.matches('.three-dots-btn')) document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
 });
 
+// خروج از فول اسکرین با زدن کلید ESC
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
+        document.getElementById('local-container').classList.remove('pip');
+    }
+});
+
 function getInitials(name) { return name ? name.substring(0, 2).toUpperCase() : 'U'; }
 
 function updateGridLayout() {
@@ -44,7 +51,6 @@ function updateGridLayout() {
     else grid.classList.add('grid-many');
 }
 
-// هوش مصنوعی تشخیص سطح صدای زنده کاربر
 function getAudioContext() {
     if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     return audioContext;
@@ -117,7 +123,6 @@ async function login() {
     } catch (error) { alert("Server Offline."); }
 }
 
-// مدیریت تب‌های سایدبار
 function toggleSidebar() { document.getElementById('main-sidebar').classList.toggle('show'); }
 function switchSidebarTab(tabName) {
     document.querySelectorAll('.sb-tab').forEach(t => t.classList.remove('active'));
@@ -172,18 +177,26 @@ function togglePin(containerId) {
     if (!isPinned) container.classList.add('pinned');
 }
 
+// تابع فعال‌سازی فول اسکرین واقعی
+function makeFullscreen(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    const localCont = document.getElementById('local-container');
+    document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
+    
+    container.classList.add('fullscreen');
+    if (container.id !== 'local-container' && !isVideoMuted) localCont.classList.add('pip');
+    else localCont.classList.remove('pip');
+}
+
 function setupDoubleClickHandler(containerElement) {
     containerElement.ondblclick = () => {
         const isFS = containerElement.classList.contains('fullscreen');
-        const localCont = document.getElementById('local-container');
-        document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
-        
-        if (!isFS) {
-            containerElement.classList.add('fullscreen');
-            if (containerElement.id !== 'local-container' && !isVideoMuted) localCont.classList.add('pip');
-            else localCont.classList.remove('pip');
-        } else {
-            localCont.classList.remove('pip');
+        if (!isFS) makeFullscreen(containerElement.id);
+        else {
+            containerElement.classList.remove('fullscreen');
+            document.getElementById('local-container').classList.remove('pip');
         }
     };
 }
@@ -195,7 +208,7 @@ async function initMedia() {
         localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
         localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
         
-        attachVolumeMeter(localStream, 'mic-local'); // روشن شدن هوش مصنوعی صدا برای خودمان
+        attachVolumeMeter(localStream, 'mic-local'); 
     } catch(e) { console.error("Camera access denied."); }
 }
 
@@ -376,6 +389,7 @@ function addRemoteVideo(peerId, stream, streamType) {
             <button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button>
             <div class="dropdown-menu" id="${menuId}">
                 <button class="dropdown-item" onclick="togglePin('${containerId}'); toggleMenu('${menuId}')">📌 Pin Feed</button>
+                <button class="dropdown-item" onclick="makeFullscreen('${containerId}'); toggleMenu('${menuId}')">🔲 Fullscreen</button>
                 ${adminMenu}
             </div>
         </div>
@@ -389,7 +403,6 @@ function addRemoteVideo(peerId, stream, streamType) {
 
     const label = document.createElement('div');
     label.className = `label ${isScreen ? 'screen-lbl' : ''}`;
-    // اضافه شدن آیکون میکروفون برای بقیه
     let micHtml = isScreen ? '' : `<span class="mic-indicator" id="mic-${peerId}"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/></svg></span>`;
     label.innerHTML = `${micHtml} <span class="name-${peerId}">${labelText}</span>`;
     container.appendChild(label);
@@ -402,7 +415,6 @@ function addRemoteVideo(peerId, stream, streamType) {
 
     document.getElementById('video-grid').appendChild(container);
     
-    // فعال کردن تشخیص صدا برای ویدیوهای بقیه
     if(!isScreen) attachVolumeMeter(stream, `mic-${peerId}`);
     
     updateGridLayout();
@@ -475,7 +487,6 @@ function toggleMeetingState() {
     }
 }
 
-// سیستم ضبط جلسه مرورگر (DVR) اختصاصی ادمین
 async function toggleRecording() {
     const btn = document.getElementById('btn-record');
     
@@ -498,17 +509,16 @@ async function toggleRecording() {
             const url = URL.createObjectURL(blob);
             const dateStr = new Date().toLocaleString();
             
-            // اضافه کردن به لیست پنل ادمین
             const list = document.getElementById('recordings-list');
             if (list.innerText.includes('No recordings')) list.innerHTML = '';
             
             const recId = 'rec_' + Date.now();
             list.innerHTML += `
                 <div class="rec-item" id="${recId}">
-                    <div class="rec-title">Meeting Session - ${dateStr}</div>
+                    <div class="rec-title">Session - ${dateStr}</div>
                     <div class="rec-actions">
-                        <button class="rec-btn btn-dl" onclick="downloadRecording('${url}', '${dateStr}')">Download HD</button>
-                        <button class="rec-btn btn-del" onclick="document.getElementById('${recId}').remove()">Delete</button>
+                        <button class="rec-btn btn-dl" onclick="downloadRecording('${url}', '${dateStr}')">Save MP4</button>
+                        <button class="rec-btn btn-del" onclick="document.getElementById('${recId}').remove()">Trash</button>
                     </div>
                 </div>
             `;
@@ -526,7 +536,7 @@ function downloadRecording(url, date) {
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `BlackMeet_Record_${date.replace(/[/, :]/g, '_')}.webm`;
+    a.download = `BlackMeet_Record_${date.replace(/[/, :]/g, '_')}.mp4`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -589,6 +599,7 @@ function addLocalScreenShare(stream) {
             <button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button>
             <div class="dropdown-menu" id="${menuId}">
                 <button class="dropdown-item" onclick="togglePin('local-screen-container'); toggleMenu('${menuId}')">📌 Pin Feed</button>
+                <button class="dropdown-item" onclick="makeFullscreen('local-screen-container'); toggleMenu('${menuId}')">🔲 Fullscreen</button>
                 <button class="dropdown-item danger" onclick="stopScreenShare(); toggleMenu('${menuId}')">🛑 Stop Sharing</button>
             </div>
         </div>

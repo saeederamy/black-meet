@@ -1,6 +1,6 @@
 let ws;
 let localStream;
-let peerConnections = {}; // ساختار جدید: key = peerId-streamType
+let peerConnections = {};
 const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
 const clientId = Math.random().toString(36).substring(7);
 let myRole = 'user';
@@ -12,6 +12,7 @@ let isVideoMuted = false;
 let isMeetingActive = true;
 let isScreenSharing = false;
 let myScreenStream = null;
+let screenSenderMap = {}; 
 
 const SVGs = {
     micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
@@ -32,6 +33,15 @@ document.addEventListener('click', (e) => {
 });
 
 function getInitials(name) { return name ? name.substring(0, 2).toUpperCase() : 'U'; }
+
+// تابع آپدیت هوشمند گرید
+function updateGridLayout() {
+    const grid = document.getElementById('video-grid');
+    const visibleCount = Array.from(grid.children).filter(c => c.style.display !== 'none').length;
+    grid.className = ''; // حذف کلاس‌های قبلی
+    if (visibleCount <= 6) grid.classList.add(`grid-${visibleCount}`);
+    else grid.classList.add('grid-many');
+}
 
 async function login() {
     const userRaw = document.getElementById('username').value.trim();
@@ -54,6 +64,7 @@ async function login() {
             
             if (myRole === 'admin') {
                 document.getElementById('admin-controls').style.display = 'inline';
+                document.getElementById('admin-chat-tools').style.display = 'flex';
                 document.getElementById('btn-meeting-state').innerHTML = SVGs.endCall;
             }
 
@@ -63,6 +74,7 @@ async function login() {
             await initMedia();
             connectWebSocket();
             setupDoubleClickHandler(document.getElementById('local-container'));
+            updateGridLayout();
         } else {
             alert("Authorization Denied!");
         }
@@ -82,12 +94,13 @@ function filterView(type, btnObj) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btnObj.classList.add('active');
     document.querySelectorAll('.video-container').forEach(c => {
-        if (type === 'all') c.style.display = 'block';
+        if (type === 'all') c.style.display = 'flex';
         else {
-            if (c.getAttribute('data-type') === type) c.style.display = 'block';
+            if (c.getAttribute('data-type') === type) c.style.display = 'flex';
             else c.style.display = 'none';
         }
     });
+    updateGridLayout();
 }
 
 function togglePin(containerId) {
@@ -131,7 +144,7 @@ function connectWebSocket() {
         const message = JSON.parse(event.data);
         switch (message.type) {
             case 'chat-history':
-                // لود کردن تاریخچه چت موقع ورود
+                document.getElementById('chat-messages').innerHTML = ''; // پاک کردن قبلیا
                 message.history.forEach(msg => appendChat(msg, true));
                 break;
             case 'user-joined':
@@ -155,6 +168,9 @@ function connectWebSocket() {
             case 'chat':
                 appendChat(message);
                 break;
+            case 'chat-cleared':
+                document.getElementById('chat-messages').innerHTML = '<div style="text-align:center; color:#888; font-size:12px;">Admin cleared the chat history.</div>';
+                break;
             case 'cam-state':
                 const container = document.getElementById(`container-${message.senderId}-camera`);
                 if (container) {
@@ -162,13 +178,21 @@ function connectWebSocket() {
                     else container.classList.remove('cam-off');
                 }
                 break;
+            case 'stop-screen': // سیگنال رفع باگ فریز موندن اسکرین شیر
+                const sCont = document.getElementById(`container-${message.senderId}-screen`);
+                if (sCont) sCont.remove();
+                if (peerConnections[`${message.senderId}-screen`]) {
+                    peerConnections[`${message.senderId}-screen`].close();
+                    delete peerConnections[`${message.senderId}-screen`];
+                }
+                updateGridLayout();
+                break;
             case 'meeting-paused':
-                // ترفند پرده مشکی برای قطع موقت تماس بدون نابود کردن WebRTC
                 if (myRole !== 'admin') {
                     isMeetingActive = false;
                     document.getElementById('meeting-overlay').style.display = 'flex';
-                    if (!isAudioMuted) toggleAudio(true); // قطع اجباری میکروفون
-                    if (!isVideoMuted) toggleVideo(true); // قطع اجباری دوربین
+                    if (!isAudioMuted) toggleAudio(true); 
+                    if (!isVideoMuted) toggleVideo(true); 
                 }
                 break;
             case 'meeting-resumed':
@@ -185,7 +209,6 @@ function connectWebSocket() {
     };
 }
 
-// تغییر اصلی: ساخت کانکشن مجزا با استفاده از streamType (camera یا screen)
 function createPeerConnection(peerId, streamType, isInitiator, stream) {
     const pcKey = `${peerId}-${streamType}`;
     if (peerConnections[pcKey]) return peerConnections[pcKey];
@@ -193,9 +216,7 @@ function createPeerConnection(peerId, streamType, isInitiator, stream) {
     const pc = new RTCPeerConnection(configuration);
     peerConnections[pcKey] = pc;
 
-    if (stream) {
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
-    }
+    if (stream) stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
     pc.onicecandidate = e => {
         if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }));
@@ -221,7 +242,6 @@ async function handleOffer(message) {
     const streamType = message.streamType;
     if (message.senderName) peerNames[peerId] = message.senderName;
     
-    // اگر کسی اسکرین فرستاد، ما فقط دریافت کننده‌ایم
     const streamToShare = streamType === 'camera' ? localStream : null; 
     const pc = peerConnections[`${peerId}-${streamType}`] || createPeerConnection(peerId, streamType, false, streamToShare);
     
@@ -242,9 +262,7 @@ async function handleAnswer(message) {
         document.querySelectorAll(`.name-${message.senderId}`).forEach(el => el.innerText = message.senderName);
         document.querySelectorAll(`.init-${message.senderId}`).forEach(el => el.innerText = getInitials(message.senderName));
     }
-    if (pc) {
-        try { await pc.setRemoteDescription(new RTCSessionDescription(message.answer)); } catch(err) {}
-    }
+    if (pc) { try { await pc.setRemoteDescription(new RTCSessionDescription(message.answer)); } catch(err) {} }
 }
 
 async function handleIceCandidate(message) {
@@ -307,16 +325,15 @@ function addRemoteVideo(peerId, stream, streamType) {
 
     setupDoubleClickHandler(container);
     
-    // مدیریت نمایش بر اساس تب فعال
     const activeTab = document.querySelector('.tab-btn.active').innerText.toLowerCase();
     if (activeTab.includes('screen') && !isScreen) container.style.display = 'none';
     if (activeTab.includes('camera') && isScreen) container.style.display = 'none';
 
     document.getElementById('video-grid').appendChild(container);
+    updateGridLayout();
 }
 
 function removeUserVideo(peerId) {
-    // حذف کانکشن‌های دوربین و اسکرین مربوط به این فرد
     ['camera', 'screen'].forEach(type => {
         const pcKey = `${peerId}-${type}`;
         if (peerConnections[pcKey]) {
@@ -326,6 +343,7 @@ function removeUserVideo(peerId) {
         const cont = document.getElementById(`container-${peerId}-${type}`);
         if(cont) cont.remove();
     });
+    updateGridLayout();
 }
 
 function toggleAudio(forceMute = false) {
@@ -380,13 +398,11 @@ function toggleMeetingState() {
     }
 }
 
-// حل مشکل اسکرین شیر با ایجاد کانکشن مجازی
 async function toggleScreenShare() {
     if (!isScreenSharing) {
         try {
             myScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
             
-            // برای هر نفر در روم، یک کانکشن اختصاصی از نوع screen می‌سازیم
             Object.keys(peerConnections).forEach(pcKey => {
                 if (pcKey.endsWith('-camera')) {
                     const peerId = pcKey.split('-')[0];
@@ -409,7 +425,9 @@ function stopScreenShare() {
     if (!isScreenSharing) return;
     if (myScreenStream) myScreenStream.getTracks().forEach(t => t.stop());
     
-    // قطع کردن تمام کانکشن‌های مربوط به اسکرین خودمان
+    // ارسال سیگنال مستقیم برای حذف کپسول اسکرین از سیستم بقیه
+    ws.send(JSON.stringify({ type: 'stop-screen', senderId: clientId }));
+    
     Object.keys(peerConnections).forEach(pcKey => {
         if (pcKey.endsWith('-screen')) {
             peerConnections[pcKey].close();
@@ -423,6 +441,7 @@ function stopScreenShare() {
     
     isScreenSharing = false;
     document.getElementById('btn-share').classList.remove('active-orange');
+    updateGridLayout();
 }
 
 function addLocalScreenShare(stream) {
@@ -456,6 +475,27 @@ function addLocalScreenShare(stream) {
 
     setupDoubleClickHandler(container);
     document.getElementById('video-grid').appendChild(container);
+    updateGridLayout();
+}
+
+/* --- Admin Chat Features --- */
+function clearChat() {
+    if(confirm("Are you sure you want to clear the chat history for everyone?")) {
+        ws.send(JSON.stringify({ type: 'admin-action', action: 'clear-chat' }));
+    }
+}
+
+function downloadChat() {
+    let text = "=== Black Meet Chat History ===\n\n";
+    document.querySelectorAll('.chat-msg').forEach(msg => {
+        const name = msg.querySelector('b').innerText;
+        const content = msg.innerText.replace(name, '').trim();
+        text += `[${name}] ${content}\n`;
+    });
+    const blob = new Blob([text], {type: 'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'BlackMeet_Chat_History.txt'; a.click();
 }
 
 function sendChat() {

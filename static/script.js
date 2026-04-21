@@ -4,12 +4,13 @@ let peerConnections = {};
 const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
 const clientId = Math.random().toString(36).substring(7);
 let myRole = 'user';
-let myUsername = 'User'; // ذخیره نام واقعی کاربر
-let peerNames = {}; // نقشه ذخیره نام بقیه بر اساس آیدی
+let myUsername = 'User'; 
+let peerNames = {}; 
 
 let isAudioMuted = false;
 let isVideoMuted = false;
 let isMeetingActive = true;
+let isScreenSharing = false;
 
 const SVGs = {
     micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
@@ -17,8 +18,7 @@ const SVGs = {
     camOn: '<svg viewBox="0 0 24 24"><path d="M15 8v8H5V8h10m1-2H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4V7c0-.55-.45-1-1-1z"/></svg>',
     camOff: '<svg viewBox="0 0 24 24"><path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82L21 17.18V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.54-.18L19.73 21 21 19.73 3.27 2z"/></svg>',
     endCall: '<svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.52-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>',
-    startCall: '<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>',
-    pin: '<svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>'
+    startCall: '<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>'
 };
 
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
@@ -29,8 +29,6 @@ async function login() {
     const pass = document.getElementById('password').value.trim();
     if (!userRaw || !pass) return;
 
-    // نگهداری نام اصلی (حتی اگر لاگین با نام کاربری باشد، ما نام نمایشی را می‌فرستیم)
-    // برای سادگی فرض می‌کنیم یوزرنیم همان نام نمایشی است.
     myUsername = userRaw;
 
     try {
@@ -43,7 +41,7 @@ async function login() {
         
         if (result.success) {
             myRole = result.role;
-            document.getElementById('my-name-display').innerText = myUsername;
+            document.getElementById('role-display').innerText = myUsername;
             
             if (myRole === 'admin') {
                 document.getElementById('admin-controls').style.display = 'inline';
@@ -55,22 +53,20 @@ async function login() {
 
             await initMedia();
             connectWebSocket();
-            setupFullscreen(document.getElementById('local-container'));
+            setupDoubleClickHandler(document.getElementById('local-container'));
         } else {
-            alert("Authentication Failed! Check credentials.");
+            alert("Authentication Failed!");
         }
     } catch (error) {
         alert("Server Error.");
     }
 }
 
-// تابع باز و بسته کردن منوی چت
 function toggleChat() {
-    const sidebar = document.getElementById('chat-sidebar');
-    sidebar.classList.toggle('show');
+    document.getElementById('chat-sidebar').classList.toggle('show');
 }
 
-// تابع پین کردن ویدیو (گوگل میت استایل)
+// دکمه پین (Pin) روی ویدیوها
 function togglePin(peerId) {
     const containerId = peerId === 'local' ? 'local-container' : `container-${peerId}`;
     const container = document.getElementById(containerId);
@@ -78,14 +74,12 @@ function togglePin(peerId) {
 
     const isPinned = container.classList.contains('pinned');
     
-    // ابتدا پین همه را برداریم
     document.querySelectorAll('.video-container').forEach(c => {
         c.classList.remove('pinned');
         const btn = c.querySelector('.pin-btn');
         if(btn) btn.classList.remove('active');
     });
 
-    // اگر قبلاً پین نبود، حالا پین کن
     if (!isPinned) {
         container.classList.add('pinned');
         const btn = container.querySelector('.pin-btn');
@@ -93,11 +87,34 @@ function togglePin(peerId) {
     }
 }
 
+// حالت فول اسکرین CSS و باز شدن پاپ آپ (PiP) برای تصویر خودمان
+function setupDoubleClickHandler(containerElement) {
+    containerElement.ondblclick = () => {
+        const isFS = containerElement.classList.contains('fullscreen');
+        const localCont = document.getElementById('local-container');
+        
+        // خروج همه از فول اسکرین
+        document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
+        
+        if (!isFS) {
+            containerElement.classList.add('fullscreen');
+            
+            // اگر ویدیوی شخص دیگری را فول اسکرین کردیم و دوربین خودمان روشن است -> باز شدن PiP
+            if (containerElement.id !== 'local-container' && !isVideoMuted) {
+                localCont.classList.add('pip');
+            } else {
+                localCont.classList.remove('pip');
+            }
+        } else {
+            localCont.classList.remove('pip');
+        }
+    };
+}
+
 async function initMedia() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('local-video').srcObject = localStream;
-        
         localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
         localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
     } catch(e) {
@@ -173,12 +190,12 @@ function toggleMeetingState() {
         ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
         isMeetingActive = false;
         btn.innerHTML = SVGs.startCall;
-        btn.classList.remove('active-red');
+        btn.classList.replace('active-red', 'active-green');
     } else {
         ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
         isMeetingActive = true;
         btn.innerHTML = SVGs.endCall;
-        btn.classList.add('active-red');
+        btn.classList.replace('active-green', 'active-red');
     }
 }
 
@@ -186,9 +203,7 @@ function createPeerConnection(peerId, isInitiator) {
     const pc = new RTCPeerConnection(configuration);
     peerConnections[peerId] = pc;
     
-    if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
+    if (localStream) localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
     pc.onicecandidate = event => {
         if (event.candidate) {
@@ -205,19 +220,15 @@ function createPeerConnection(peerId, isInitiator) {
     if (isInitiator) {
         pc.createOffer().then(offer => {
             pc.setLocalDescription(offer);
-            // ارسال نام همراه با Offer
             ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: offer, senderId: clientId, senderName: myUsername }));
         });
     }
     return pc;
 }
 
-// تابع بروزرسانی نام روی ویدیو
 function updateVideoLabel(peerId, name) {
     const labelSpan = document.getElementById(`name-${peerId}`);
-    if (labelSpan && name) {
-        labelSpan.innerText = name;
-    }
+    if (labelSpan && name) labelSpan.innerText = name;
 }
 
 async function handleOffer(message) {
@@ -232,7 +243,6 @@ async function handleOffer(message) {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     
-    // ارسال نام به همراه Answer
     ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: answer, senderId: clientId, senderName: myUsername }));
 }
 
@@ -256,11 +266,22 @@ function addRemoteVideo(peerId, stream) {
     const container = document.createElement('div');
     container.className = 'video-container remote-video';
     container.id = `container-${peerId}`;
+    container.title = "Double click to fullscreen";
+
+    // دکمه‌های ادمین روی ویدیو
+    if (myRole === 'admin') {
+        const adminActions = document.createElement('div');
+        adminActions.className = 'admin-actions';
+        adminActions.innerHTML = `
+            <button onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-mic', target_id: '${peerId}' }))">Mute</button>
+            <button onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-cam', target_id: '${peerId}' }))">Stop Cam</button>
+        `;
+        container.appendChild(adminActions);
+    }
 
     const pinBtn = document.createElement('button');
     pinBtn.className = 'pin-btn';
-    pinBtn.title = "Pin video";
-    pinBtn.innerHTML = SVGs.pin;
+    pinBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>';
     pinBtn.onclick = () => togglePin(peerId);
     container.appendChild(pinBtn);
 
@@ -277,23 +298,8 @@ function addRemoteVideo(peerId, stream) {
     label.innerHTML = `<span id="name-${peerId}">${displayName}</span>`;
     container.appendChild(label);
 
-    setupFullscreen(container);
+    setupDoubleClickHandler(container);
     document.getElementById('video-grid').appendChild(container);
-}
-
-function setupFullscreen(containerElement) {
-    containerElement.ondblclick = () => {
-        if (!document.fullscreenElement) {
-            containerElement.requestFullscreen().catch(() => {
-                containerElement.classList.add('fullscreen');
-            });
-        } else {
-            document.exitFullscreen();
-        }
-    };
-    document.addEventListener('fullscreenchange', () => {
-        if (!document.fullscreenElement) containerElement.classList.remove('fullscreen');
-    });
 }
 
 function removeUserVideo(peerId) {
@@ -312,10 +318,10 @@ function toggleAudio(forceMute = false) {
     
     const btn = document.getElementById('btn-mic');
     if (isAudioMuted) {
-        btn.classList.add('active-red');
+        btn.classList.replace('active-green', 'active-red');
         btn.innerHTML = SVGs.micOff;
     } else {
-        btn.classList.remove('active-red');
+        btn.classList.replace('active-red', 'active-green');
         btn.innerHTML = SVGs.micOn;
     }
 }
@@ -327,10 +333,11 @@ function toggleVideo(forceMute = false) {
     
     const btn = document.getElementById('btn-cam');
     if (isVideoMuted) {
-        btn.classList.add('active-red');
+        btn.classList.replace('active-blue', 'active-red');
         btn.innerHTML = SVGs.camOff;
+        document.getElementById('local-container').classList.remove('pip'); // در صورت خاموش شدن دوربین، PiP هم بسته شود
     } else {
-        btn.classList.remove('active-red');
+        btn.classList.replace('active-red', 'active-blue');
         btn.innerHTML = SVGs.camOn;
     }
 }
@@ -347,9 +354,7 @@ async function toggleScreenShare() {
             }
             document.getElementById('local-video').srcObject = screenStream;
             isScreenSharing = true;
-
-            // وقتی اسکرین شیر را می‌زنیم، اتوماتیک خودمان را پین کنیم تا بهتر ببینیم چی شیر کردیم
-            togglePin('local');
+            document.getElementById('btn-share').classList.add('active-blue');
 
             screenTrack.onended = () => {
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -359,20 +364,15 @@ async function toggleScreenShare() {
                 }
                 document.getElementById('local-video').srcObject = localStream;
                 isScreenSharing = false;
-                
-                // برداشتن پین
-                const localCont = document.getElementById('local-container');
-                localCont.classList.remove('pinned');
-                localCont.querySelector('.pin-btn').classList.remove('active');
+                document.getElementById('btn-share').classList.remove('active-blue');
             };
-        } catch (error) {}
+        } catch (error) { console.error("Screen share error", error); }
     }
 }
 
 function sendChat() {
     const input = document.getElementById('chat-input');
     if (input.value.trim() !== '') {
-        // نام واقعی به همراه پیام چت برای سرور ارسال می‌شود
         ws.send(JSON.stringify({ type: 'chat', text: input.value, senderName: myUsername }));
         input.value = '';
     }
@@ -384,19 +384,14 @@ document.getElementById('chat-input')?.addEventListener('keypress', function (e)
 
 function appendChat(msg) {
     const chatBox = document.getElementById('chat-messages');
-    const isMe = msg.sender === clientId;
-    
-    // اگر در پیام نام فرستنده بود (نسخه جدید) از آن استفاده کن
     let senderName = msg.senderName || (msg.role === 'admin' ? 'Host' : `User ${msg.sender.substring(0,4)}`);
-    if (isMe) senderName = 'You';
+    if (msg.sender === clientId) senderName = 'You';
     
-    const alignClass = isMe ? 'me' : '';
-    chatBox.innerHTML += `<div class="chat-msg ${alignClass}"><b>${senderName}</b> <br> ${msg.text}</div>`;
+    chatBox.innerHTML += `<div class="chat-msg"><b>${senderName}</b> <br> ${msg.text}</div>`;
     chatBox.scrollTop = chatBox.scrollHeight;
     
-    // اگر پیام آمد و منوی چت بسته بود، آن را باز کن (اختیاری)
-    const sidebar = document.getElementById('chat-sidebar');
-    if(!sidebar.classList.contains('show')) {
-        toggleChat();
+    if(!document.getElementById('chat-sidebar').classList.contains('show')) {
+        document.getElementById('btn-share').nextElementSibling.style.transform = "scale(1.2)";
+        setTimeout(() => document.getElementById('btn-share').nextElementSibling.style.transform = "scale(1)", 500);
     }
 }

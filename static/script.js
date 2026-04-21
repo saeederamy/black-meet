@@ -1,4 +1,4 @@
-let ws;
+let isPolling = false;
 let localStream;
 let peerConnections = {};
 const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
@@ -13,7 +13,6 @@ let isVideoMuted = false;
 let isMeetingActive = true;
 let isScreenSharing = false;
 let myScreenStream = null;
-let screenSenderMap = {}; 
 
 let mediaRecorder;
 let recordedChunks = [];
@@ -30,7 +29,6 @@ const SVGs = {
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
 document.getElementById('btn-cam').innerHTML = SVGs.camOn;
 
-// استفاده از closest برای حل مشکل بسته‌شدن آنی چرخ‌دنده
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.three-dots-btn') && !e.target.closest('.r-menu-btn')) {
         document.querySelectorAll('.dropdown-menu, .r-dropdown').forEach(m => m.classList.remove('show'));
@@ -57,6 +55,7 @@ function getAudioContext() {
     if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     return audioContext;
 }
+
 function attachVolumeMeter(stream, iconId) {
     const audioTracks = stream.getAudioTracks();
     if(audioTracks.length === 0) return;
@@ -74,8 +73,7 @@ function attachVolumeMeter(stream, iconId) {
             analyser.getByteFrequencyData(dataArray);
             let sum = 0;
             for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
-            let avg = sum / dataArray.length;
-            if(avg > 10) icon.classList.add('speaking');
+            if((sum / dataArray.length) > 10) icon.classList.add('speaking');
             else icon.classList.remove('speaking');
             requestAnimationFrame(check);
         }
@@ -89,17 +87,14 @@ async function login() {
     if (!userRaw || !pass) return;
 
     try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: userRaw.toLowerCase(), password: pass })
+        const response = await fetch(`/api/login?nocache=${Date.now()}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: userRaw.toLowerCase(), password: pass }), cache: 'no-store'
         });
         const result = await response.json();
         
         if (result.success) {
-            myRole = result.role;
-            myUsername = result.username;
-            
+            myRole = result.role; myUsername = result.username;
             if (myRole === 'admin') {
                 document.getElementById('admin-controls').style.display = 'inline-flex';
                 document.getElementById('btn-meeting-state').innerHTML = SVGs.endCall;
@@ -107,81 +102,63 @@ async function login() {
                 document.getElementById('btn-create-room').style.display = 'block';
                 document.body.classList.add('is-admin');
             }
-
             document.getElementById('login-wrapper').style.display = 'none';
             document.getElementById('rooms-wrapper').style.display = 'flex';
-            
             fetchRooms();
-        } else {
-            alert("Authorization Denied!");
-        }
-    } catch (error) { alert("Server Offline."); }
+        } else alert("Authorization Denied!");
+    } catch (error) { alert("Server Offline or Network Blocked."); }
 }
 
-/* ================= WEB UPDATER ================= */
 async function checkUpdate() {
     const btn = document.getElementById('btn-sys-update');
-    btn.innerText = "⏳ Checking...";
-    btn.disabled = true;
-
+    btn.innerText = "⏳ Checking..."; btn.disabled = true;
     try {
-        const response = await fetch('/api/system/update', { method: 'POST' });
+        const response = await fetch(`/api/system/update?nocache=${Date.now()}`, { 
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), cache: 'no-store'
+        });
         const result = await response.json();
-        
         if (result.success) {
-            if (result.updated) {
-                alert(result.message);
-                setTimeout(() => { window.location.reload(); }, 3000);
-            } else {
-                alert(result.message);
-            }
-        } else {
-            alert("Update failed: " + result.message);
-        }
-    } catch (err) {
-        alert("Network error during update.");
-    }
-    
-    btn.innerText = "🔄 Check & Update System";
-    btn.disabled = false;
+            alert(result.message);
+            if (result.updated) setTimeout(() => { window.location.reload(); }, 3000);
+        } else alert("Update failed: " + result.message);
+    } catch (err) { alert("Network error during update."); }
+    btn.innerText = "🔄 Check & Update System"; btn.disabled = false;
 }
 
-/* ================= ROOMS MANAGEMENT ================= */
 async function fetchRooms() {
-    const response = await fetch(`/api/rooms?username=${myUsername}&role=${myRole}`);
-    const data = await response.json();
-    const list = document.getElementById('rooms-list');
-    list.innerHTML = '';
-    
-    if(Object.keys(data.rooms).length === 0) {
-        list.innerHTML = '<p style="color:var(--text-muted);">No assigned rooms found.</p>';
-        return;
-    }
-
-    for (let r_id in data.rooms) {
-        const room = data.rooms[r_id];
-        const card = document.createElement('div');
-        card.className = 'room-card';
-        card.innerHTML = `
-            <h3>${room.name}</h3>
-            <p style="font-size:13px; color:var(--text-muted);">Members: ${room.members.length === 0 ? 'Admin only' : room.members.length}</p>
-            <button class="join-btn" onclick="joinRoom('${r_id}', '${room.name}')">Join Session</button>
-        `;
+    try {
+        const response = await fetch(`/api/rooms/list?nocache=${Date.now()}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: myUsername, role: myRole }), cache: 'no-store'
+        });
+        const data = await response.json();
+        const list = document.getElementById('rooms-list'); list.innerHTML = '';
         
-        if (myRole === 'admin') {
-            card.innerHTML += `
-                <div class="room-admin-tools">
-                    <button class="r-menu-btn" onclick="toggleMenu('rmenu-${r_id}')">⚙️</button>
-                    <div class="r-dropdown" id="rmenu-${r_id}">
-                        <button onclick="openEditRoom('${r_id}', '${room.name}')">✏️ Rename Room</button>
-                        <button onclick="openManageMembers('${r_id}')">👥 Manage Users</button>
-                        <button style="color:var(--c-red);" onclick="deleteRoom('${r_id}')">🗑️ Delete Room</button>
-                    </div>
-                </div>
-            `;
+        if(!data.success) return;
+        if(Object.keys(data.rooms).length === 0) {
+            list.innerHTML = '<p style="color:var(--text-muted);">No assigned rooms found.</p>'; return;
         }
-        list.appendChild(card);
-    }
+
+        for (let r_id in data.rooms) {
+            const room = data.rooms[r_id];
+            const card = document.createElement('div');
+            card.className = 'room-card';
+            card.innerHTML = `<h3>${room.name}</h3><p style="font-size:13px; color:var(--text-muted);">Members: ${room.members.length === 0 ? 'Admin only' : room.members.length}</p><button class="join-btn" onclick="joinRoom('${r_id}', '${room.name}')">Join Session</button>`;
+            
+            if (myRole === 'admin') {
+                card.innerHTML += `
+                    <div class="room-admin-tools">
+                        <button class="r-menu-btn" onclick="toggleMenu('rmenu-${r_id}')">⚙️</button>
+                        <div class="r-dropdown" id="rmenu-${r_id}">
+                            <button onclick="openEditRoom('${r_id}', '${room.name}')">✏️ Rename Room</button>
+                            <button onclick="openManageMembers('${r_id}')">👥 Manage Users</button>
+                            <button style="color:var(--c-red);" onclick="deleteRoom('${r_id}')">🗑️ Delete Room</button>
+                        </div>
+                    </div>`;
+            }
+            list.appendChild(card);
+        }
+    } catch (err) { console.error("Fetch Error:", err); }
 }
 
 function openCreateRoom() {
@@ -204,75 +181,163 @@ async function saveRoom() {
     const name = document.getElementById('room-name-input').value.trim();
     const editId = document.getElementById('edit-room-id').value;
     if(!name) return;
+    const btn = document.querySelector('#room-modal .btn-primary');
+    btn.innerText = "Saving..."; btn.disabled = true;
 
-    if (editId) {
-        await fetch(`/api/rooms/${editId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})});
-    } else {
-        await fetch(`/api/rooms`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})});
-    }
-    closeModal('room-modal');
-    fetchRooms();
+    try {
+        const payload = editId ? { action: "rename", room_id: editId, name: name } : { action: "create", name: name };
+        const res = await fetch(`/api/room_action?nocache=${Date.now()}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), cache: 'no-store'
+        });
+        const result = await res.json();
+        if(result.success) { closeModal('room-modal'); await fetchRooms(); }
+    } catch(e) {}
+    btn.innerText = "Save"; btn.disabled = false;
 }
 
 async function deleteRoom(id) {
     if(confirm("Delete this room forever?")) {
-        await fetch(`/api/rooms/${id}`, { method: 'DELETE' });
+        await fetch(`/api/room_action?nocache=${Date.now()}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "delete", room_id: id }), cache: 'no-store'
+        });
         fetchRooms();
     }
 }
 
 async function openManageMembers(roomId) {
     document.getElementById('members-room-id').value = roomId;
-    const resRooms = await fetch(`/api/rooms?username=${myUsername}&role=${myRole}`);
-    const dataRooms = await resRooms.json();
-    const currentMembers = dataRooms.rooms[roomId].members || [];
-
-    const resUsers = await fetch('/api/users');
-    const dataUsers = await resUsers.json();
-    
-    const list = document.getElementById('users-checkboxes');
-    list.innerHTML = '';
-    dataUsers.users.forEach(u => {
-        if(u !== 'admin') {
-            const checked = currentMembers.includes(u) ? 'checked' : '';
-            list.innerHTML += `<label><input type="checkbox" value="${u}" ${checked}> ${u}</label>`;
+    try {
+        const resRooms = await fetch(`/api/rooms/list?nocache=${Date.now()}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: myUsername, role: myRole }), cache: 'no-store'
+        });
+        const currentMembers = (await resRooms.json()).rooms[roomId].members || [];
+        const resUsers = await fetch(`/api/users/list?nocache=${Date.now()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), cache: 'no-store' });
+        const dataUsers = await resUsers.json();
+        
+        const list = document.getElementById('users-checkboxes'); list.innerHTML = '';
+        if (dataUsers.users.length <= 1) {
+            list.innerHTML = '<p style="color:#888; font-size:13px;">No other users found.</p>';
+        } else {
+            dataUsers.users.forEach(u => {
+                if(u !== 'admin') {
+                    const checked = currentMembers.includes(u) ? 'checked' : '';
+                    list.innerHTML += `<label><input type="checkbox" value="${u}" ${checked}> ${u}</label>`;
+                }
+            });
         }
-    });
-    document.getElementById('members-modal').style.display = 'flex';
+        document.getElementById('members-modal').style.display = 'flex';
+    } catch(e) {}
 }
 
 async function saveMembers() {
     const roomId = document.getElementById('members-room-id').value;
-    const checks = document.querySelectorAll('#users-checkboxes input:checked');
-    const members = Array.from(checks).map(c => c.value);
-    
-    await fetch(`/api/rooms/${roomId}/members`, {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({members})
-    });
-    closeModal('members-modal');
-    fetchRooms();
+    const members = Array.from(document.querySelectorAll('#users-checkboxes input:checked')).map(c => c.value);
+    const btn = document.querySelector('#members-modal .btn-primary');
+    btn.innerText = "Saving..."; btn.disabled = true;
+
+    try {
+        await fetch(`/api/room_action?nocache=${Date.now()}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "update_members", room_id: roomId, members: members }), cache: 'no-store'
+        });
+        closeModal('members-modal'); await fetchRooms(); 
+    } catch(e) {}
+    btn.innerText = "Save Users"; btn.disabled = false;
 }
 
-/* ================= MEETING LOGIC ================= */
+/* ================= HTTP POLLING SIGNALING ================= */
+async function sendSignaling(msgObj) {
+    try {
+        await fetch(`/api/signaling/send?nocache=${Date.now()}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({room_id: currentRoomId, client_id: clientId, message: msgObj}), cache: 'no-store'
+        });
+    } catch(e) {}
+}
+
+async function connectSignaling() {
+    isPolling = true;
+    try {
+        await fetch(`/api/signaling/join?nocache=${Date.now()}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({room_id: currentRoomId, client_id: clientId, role: myRole}), cache: 'no-store'
+        });
+        pollServer();
+        sendSignaling({ type: 'cam-state', state: isVideoMuted, target: 'all', senderId: clientId });
+    } catch(e) { console.error("Signaling Join Error", e); }
+}
+
+async function pollServer() {
+    while(isPolling) {
+        try {
+            const res = await fetch(`/api/signaling/poll?room_id=${currentRoomId}&client_id=${clientId}&t=${Date.now()}`);
+            if (!res.ok) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            const messages = await res.json();
+            for(let msg of messages) {
+                if(msg.type === 'ping') continue;
+                handleSignalingMessage(msg);
+            }
+        } catch(e) {
+            await new Promise(r => setTimeout(r, 3000));
+        }
+    }
+}
+
+function handleSignalingMessage(message) {
+    switch (message.type) {
+        case 'chat-history':
+            document.getElementById('chat-messages').innerHTML = ''; 
+            message.history.forEach(msg => appendChat(msg, true)); break;
+        case 'user-joined':
+            if (isMeetingActive) {
+                createPeerConnection(message.client_id, 'camera', true, localStream);
+                sendSignaling({ type: 'cam-state', state: isVideoMuted, target: message.client_id, senderId: clientId });
+            }
+            break;
+        case 'offer': if (isMeetingActive) handleOffer(message); break;
+        case 'answer': handleAnswer(message); break;
+        case 'ice-candidate': handleIceCandidate(message); break;
+        case 'user-left':
+            removeUserVideo(message.client_id); delete peerNames[message.client_id]; refreshUserList(); break;
+        case 'chat': appendChat(message); break;
+        case 'chat-cleared': document.getElementById('chat-messages').innerHTML = '<div style="text-align:center; color:#888; font-size:12px; margin-top:20px;">Admin cleared chat.</div>'; break;
+        case 'cam-state':
+            const container = document.getElementById(`container-${message.senderId}-camera`);
+            if (container) { message.state === true ? container.classList.add('cam-off') : container.classList.remove('cam-off'); } break;
+        case 'stop-screen':
+            const sCont = document.getElementById(`container-${message.senderId}-screen`);
+            if (sCont) sCont.remove();
+            if (peerConnections[`${message.senderId}-screen`]) { peerConnections[`${message.senderId}-screen`].close(); delete peerConnections[`${message.senderId}-screen`]; }
+            updateGridLayout(); break;
+        case 'meeting-paused':
+            if (myRole !== 'admin') {
+                isMeetingActive = false; document.getElementById('meeting-overlay').style.display = 'flex';
+                document.getElementById('main-workspace').style.display = 'none'; document.getElementById('view-tabs').style.display = 'none'; document.querySelector('.bottom-bar').style.display = 'none';
+                stopAllMediaAndConnections();
+            } break;
+        case 'meeting-resumed':
+            if (myRole !== 'admin') {
+                isMeetingActive = true; document.getElementById('meeting-overlay').style.display = 'none';
+                document.getElementById('main-workspace').style.display = 'flex'; document.getElementById('view-tabs').style.display = 'flex'; document.querySelector('.bottom-bar').style.display = 'flex';
+                initMedia().then(() => { sendSignaling({ type: 'user-joined', client_id: clientId, role: myRole }); });
+            } break;
+        case 'force-action':
+            if (message.action === 'mute-mic') toggleAudio(true);
+            if (message.action === 'mute-cam') toggleVideo(true); break;
+    }
+}
+
 async function joinRoom(roomId, roomName) {
     currentRoomId = roomId;
-    document.getElementById('rooms-wrapper').style.display = 'none';
-    document.getElementById('meet-screen').style.display = 'flex';
-    document.getElementById('current-room-name').innerText = roomName;
-    document.getElementById('role-display').innerText = myUsername;
-    document.getElementById('local-avatar').innerText = getInitials(myUsername);
-
-    await initMedia();
-    connectWebSocket();
-    updateGridLayout();
-    refreshUserList();
+    document.getElementById('rooms-wrapper').style.display = 'none'; document.getElementById('meet-screen').style.display = 'flex';
+    document.getElementById('current-room-name').innerText = roomName; document.getElementById('role-display').innerText = myUsername; document.getElementById('local-avatar').innerText = getInitials(myUsername);
+    await initMedia(); connectSignaling(); updateGridLayout(); refreshUserList();
 }
 
 function leaveRoom() {
     stopAllMediaAndConnections();
-    if(ws) ws.close();
-    document.getElementById('meet-screen').style.display = 'none';
-    document.getElementById('rooms-wrapper').style.display = 'flex';
+    isPolling = false;
+    fetch(`/api/signaling/leave?nocache=${Date.now()}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoomId, client_id: clientId}) });
+    document.getElementById('meet-screen').style.display = 'none'; document.getElementById('rooms-wrapper').style.display = 'flex';
     fetchRooms();
 }
 
@@ -280,407 +345,190 @@ function toggleSidebar() { document.getElementById('main-sidebar').classList.tog
 function switchSidebarTab(tabName) {
     document.querySelectorAll('.sb-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.sb-panel').forEach(p => p.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById(`panel-${tabName}`).classList.add('active');
+    event.target.classList.add('active'); document.getElementById(`panel-${tabName}`).classList.add('active');
 }
 
 function refreshUserList() {
     const list = document.getElementById('users-list');
     list.innerHTML = `<div class="user-row"><div class="avatar">${getInitials(myUsername)}</div><div class="name">${myUsername} (You)</div></div>`;
-    for(let id in peerNames) {
-        list.innerHTML += `<div class="user-row"><div class="avatar">${getInitials(peerNames[id])}</div><div class="name">${peerNames[id]}</div></div>`;
-    }
+    for(let id in peerNames) list.innerHTML += `<div class="user-row"><div class="avatar">${getInitials(peerNames[id])}</div><div class="name">${peerNames[id]}</div></div>`;
 }
 
 function toggleMenu(menuId) {
-    const menu = document.getElementById(menuId);
-    const isShowing = menu.classList.contains('show');
+    const menu = document.getElementById(menuId); const isShowing = menu.classList.contains('show');
     document.querySelectorAll('.dropdown-menu, .r-dropdown').forEach(m => m.classList.remove('show'));
     if (!isShowing) menu.classList.add('show');
 }
 
 function filterView(type, btnObj) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btnObj.classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btnObj.classList.add('active');
     document.querySelectorAll('.video-container').forEach(c => {
         if (type === 'all') c.style.display = 'flex';
-        else {
-            if (c.getAttribute('data-type') === type) c.style.display = 'flex';
-            else c.style.display = 'none';
-        }
+        else { c.getAttribute('data-type') === type ? c.style.display = 'flex' : c.style.display = 'none'; }
     });
     updateGridLayout();
 }
 
 function togglePin(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+    const container = document.getElementById(containerId); if (!container) return;
     const isPinned = container.classList.contains('pinned');
     document.querySelectorAll('.video-container').forEach(c => c.classList.remove('pinned'));
     if (!isPinned) container.classList.add('pinned');
 }
 
 function makeFullscreen(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+    const container = document.getElementById(containerId); if (!container) return;
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().then(() => {
             container.classList.add('fullscreen');
-            if (container.id !== 'local-container' && !isVideoMuted) {
-                document.getElementById('local-container').classList.add('pip');
-            }
+            if (container.id !== 'local-container' && !isVideoMuted) document.getElementById('local-container').classList.add('pip');
         }).catch(err => console.log(err));
-    } else {
-        document.exitFullscreen();
-    }
+    } else document.exitFullscreen();
 }
 
-function setupDoubleClickHandler(containerElement) {
-    containerElement.ondblclick = () => {
-        makeFullscreen(containerElement.id);
-    };
-}
+function setupDoubleClickHandler(containerElement) { containerElement.ondblclick = () => { makeFullscreen(containerElement.id); }; }
 
 async function initMedia() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('local-video').srcObject = localStream;
-        localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
-        localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
+        localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted); localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
         attachVolumeMeter(localStream, 'mic-local'); 
-    } catch(e) { console.error("Camera access denied."); }
-}
-
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws/${currentRoomId}/${clientId}/${myRole}`);
-
-    ws.onmessage = async (event) => {
-        const message = JSON.parse(event.data);
-        switch (message.type) {
-            case 'chat-history':
-                document.getElementById('chat-messages').innerHTML = ''; 
-                message.history.forEach(msg => appendChat(msg, true));
-                break;
-            case 'user-joined':
-                if (isMeetingActive) {
-                    createPeerConnection(message.client_id, 'camera', true, localStream);
-                    ws.send(JSON.stringify({ type: 'cam-state', state: isVideoMuted, target: message.client_id, senderId: clientId }));
-                }
-                break;
-            case 'offer':
-                if (isMeetingActive) handleOffer(message);
-                break;
-            case 'answer':
-                handleAnswer(message);
-                break;
-            case 'ice-candidate':
-                handleIceCandidate(message);
-                break;
-            case 'user-left':
-                removeUserVideo(message.client_id);
-                delete peerNames[message.client_id];
-                refreshUserList();
-                break;
-            case 'chat':
-                appendChat(message);
-                break;
-            case 'chat-cleared':
-                document.getElementById('chat-messages').innerHTML = '<div style="text-align:center; color:#888; font-size:12px; margin-top:20px;">Admin cleared the chat history.</div>';
-                break;
-            case 'cam-state':
-                const container = document.getElementById(`container-${message.senderId}-camera`);
-                if (container) {
-                    if (message.state === true) container.classList.add('cam-off');
-                    else container.classList.remove('cam-off');
-                }
-                break;
-            case 'stop-screen':
-                const sCont = document.getElementById(`container-${message.senderId}-screen`);
-                if (sCont) sCont.remove();
-                if (peerConnections[`${message.senderId}-screen`]) {
-                    peerConnections[`${message.senderId}-screen`].close();
-                    delete peerConnections[`${message.senderId}-screen`];
-                }
-                updateGridLayout();
-                break;
-            case 'meeting-paused':
-                if (myRole !== 'admin') {
-                    isMeetingActive = false;
-                    document.getElementById('meeting-overlay').style.display = 'flex';
-                    document.getElementById('main-workspace').style.display = 'none';
-                    document.getElementById('view-tabs').style.display = 'none';
-                    document.querySelector('.bottom-bar').style.display = 'none';
-                    stopAllMediaAndConnections();
-                }
-                break;
-            case 'meeting-resumed':
-                if (myRole !== 'admin') {
-                    isMeetingActive = true;
-                    document.getElementById('meeting-overlay').style.display = 'none';
-                    document.getElementById('main-workspace').style.display = 'flex';
-                    document.getElementById('view-tabs').style.display = 'flex';
-                    document.querySelector('.bottom-bar').style.display = 'flex';
-                    initMedia().then(() => {
-                        ws.send(JSON.stringify({ type: 'user-joined', client_id: clientId, role: myRole }));
-                    });
-                }
-                break;
-            case 'force-action':
-                if (message.action === 'mute-mic') toggleAudio(true);
-                if (message.action === 'mute-cam') toggleVideo(true);
-                break;
-        }
-    };
+    } catch(e) {}
 }
 
 function createPeerConnection(peerId, streamType, isInitiator, stream) {
-    const pcKey = `${peerId}-${streamType}`;
-    if (peerConnections[pcKey]) return peerConnections[pcKey];
-
-    const pc = new RTCPeerConnection(configuration);
-    peerConnections[pcKey] = pc;
-
+    const pcKey = `${peerId}-${streamType}`; if (peerConnections[pcKey]) return peerConnections[pcKey];
+    const pc = new RTCPeerConnection(configuration); peerConnections[pcKey] = pc;
     if (stream) stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-    pc.onicecandidate = e => {
-        if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }));
-    };
-
-    pc.ontrack = e => {
-        if (e.streams && e.streams[0]) {
-            addRemoteVideo(peerId, e.streams[0], streamType);
-        }
-    };
+    pc.onicecandidate = e => { if (e.candidate) sendSignaling({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }); };
+    pc.ontrack = e => { if (e.streams && e.streams[0]) addRemoteVideo(peerId, e.streams[0], streamType); };
 
     if (isInitiator) {
         pc.createOffer().then(offer => {
             pc.setLocalDescription(offer);
-            ws.send(JSON.stringify({ type: 'offer', target: peerId, streamType: streamType, offer: offer, senderId: clientId, senderName: myUsername }));
+            sendSignaling({ type: 'offer', target: peerId, streamType: streamType, offer: offer, senderId: clientId, senderName: myUsername });
         });
     }
     return pc;
 }
 
 async function handleOffer(message) {
-    const peerId = message.senderId;
-    const streamType = message.streamType;
+    const peerId = message.senderId; const streamType = message.streamType;
     if (message.senderName) { peerNames[peerId] = message.senderName; refreshUserList(); }
-    
     const streamToShare = streamType === 'camera' ? localStream : null; 
     const pc = peerConnections[`${peerId}-${streamType}`] || createPeerConnection(peerId, streamType, false, streamToShare);
-    
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: 'answer', target: peerId, streamType: streamType, answer: pc.localDescription, senderId: clientId, senderName: myUsername }));
+        sendSignaling({ type: 'answer', target: peerId, streamType: streamType, answer: pc.localDescription, senderId: clientId, senderName: myUsername });
     } catch(err) {}
 }
 
 async function handleAnswer(message) {
-    const pcKey = `${message.senderId}-${message.streamType}`;
-    const pc = peerConnections[pcKey];
+    const pcKey = `${message.senderId}-${message.streamType}`; const pc = peerConnections[pcKey];
     if (message.senderName) {
         peerNames[message.senderId] = message.senderName;
         document.querySelectorAll(`.name-${message.senderId}`).forEach(el => el.innerText = message.senderName);
-        document.querySelectorAll(`.init-${message.senderId}`).forEach(el => el.innerText = getInitials(message.senderName));
-        refreshUserList();
+        document.querySelectorAll(`.init-${message.senderId}`).forEach(el => el.innerText = getInitials(message.senderName)); refreshUserList();
     }
     if (pc) { try { await pc.setRemoteDescription(new RTCSessionDescription(message.answer)); } catch(err) {} }
 }
 
 async function handleIceCandidate(message) {
-    const pcKey = `${message.senderId}-${message.streamType}`;
-    const pc = peerConnections[pcKey];
+    const pcKey = `${message.senderId}-${message.streamType}`; const pc = peerConnections[pcKey];
     if (pc) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
 }
 
 function addRemoteVideo(peerId, stream, streamType) {
-    const containerId = `container-${peerId}-${streamType}`;
-    if (document.getElementById(containerId)) return;
-    
-    const displayName = peerNames[peerId] || `User`;
-    const isScreen = streamType === 'screen';
+    const containerId = `container-${peerId}-${streamType}`; if (document.getElementById(containerId)) return;
+    const displayName = peerNames[peerId] || `User`; const isScreen = streamType === 'screen';
     const labelText = isScreen ? `${displayName}'s Screen` : displayName;
     
-    const container = document.createElement('div');
-    container.className = 'video-container remote-video';
-    container.id = containerId;
-    container.setAttribute('data-type', streamType);
+    const container = document.createElement('div'); container.className = 'video-container remote-video'; container.id = containerId; container.setAttribute('data-type', streamType);
 
-    if (!isScreen) {
-        container.innerHTML += `
-            <div class="avatar-bubble">
-                <div class="avatar-circle init-${peerId}">${getInitials(displayName)}</div>
-                <div class="avatar-name name-${peerId}">${displayName}</div>
-            </div>
-        `;
-    }
+    if (!isScreen) container.innerHTML += `<div class="avatar-bubble"><div class="avatar-circle init-${peerId}">${getInitials(displayName)}</div><div class="avatar-name name-${peerId}">${displayName}</div></div>`;
 
-    let adminMenu = '';
-    if (myRole === 'admin') {
-        adminMenu = `
-            <button class="dropdown-item" onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-mic', target_id: '${peerId}' }))">🎙️ Mute Mic</button>
-            <button class="dropdown-item danger" onclick="ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-cam', target_id: '${peerId}' }))">🚫 Block Camera</button>
-        `;
-    }
+    let adminMenu = myRole === 'admin' ? `<button class="dropdown-item" onclick="sendSignaling({ type: 'admin-action', action: 'mute-mic', target_id: '${peerId}' })">🎙️ Mute Mic</button><button class="dropdown-item danger" onclick="sendSignaling({ type: 'admin-action', action: 'mute-cam', target_id: '${peerId}' })">🚫 Block Camera</button>` : '';
 
     const menuId = `menu-${peerId}-${streamType}`;
-    container.innerHTML += `
-        <div class="menu-wrapper">
-            <button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button>
-            <div class="dropdown-menu" id="${menuId}">
-                <button class="dropdown-item" onclick="togglePin('${containerId}'); toggleMenu('${menuId}')">📌 Pin Feed</button>
-                <button class="dropdown-item" onclick="makeFullscreen('${containerId}'); toggleMenu('${menuId}')">🔲 Fullscreen</button>
-                ${adminMenu}
-            </div>
-        </div>
-    `;
+    container.innerHTML += `<div class="menu-wrapper"><button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button><div class="dropdown-menu" id="${menuId}"><button class="dropdown-item" onclick="togglePin('${containerId}'); toggleMenu('${menuId}')">📌 Pin Feed</button><button class="dropdown-item" onclick="makeFullscreen('${containerId}'); toggleMenu('${menuId}')">🔲 Fullscreen</button>${adminMenu}</div></div>`;
 
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    video.autoplay = true;
-    video.playsInline = true;
-    container.appendChild(video);
-
-    const label = document.createElement('div');
-    label.className = `label ${isScreen ? 'screen-lbl' : ''}`;
+    const video = document.createElement('video'); video.srcObject = stream; video.autoplay = true; video.playsInline = true; container.appendChild(video);
+    const label = document.createElement('div'); label.className = `label ${isScreen ? 'screen-lbl' : ''}`;
     let micHtml = isScreen ? '' : `<span class="mic-indicator" id="mic-${peerId}"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/></svg></span>`;
-    label.innerHTML = `${micHtml} <span class="name-${peerId}">${labelText}</span>`;
-    container.appendChild(label);
+    label.innerHTML = `${micHtml} <span class="name-${peerId}">${labelText}</span>`; container.appendChild(label);
 
     setupDoubleClickHandler(container);
-    
     const activeTab = document.querySelector('.tab-btn.active').innerText.toLowerCase();
     if (activeTab.includes('screen') && !isScreen) container.style.display = 'none';
     if (activeTab.includes('camera') && isScreen) container.style.display = 'none';
 
     document.getElementById('video-grid').appendChild(container);
-    if(!isScreen) attachVolumeMeter(stream, `mic-${peerId}`);
-    updateGridLayout();
+    if(!isScreen) attachVolumeMeter(stream, `mic-${peerId}`); updateGridLayout();
 }
 
 function removeUserVideo(peerId) {
     ['camera', 'screen'].forEach(type => {
         const pcKey = `${peerId}-${type}`;
-        if (peerConnections[pcKey]) {
-            peerConnections[pcKey].close();
-            delete peerConnections[pcKey];
-        }
-        const cont = document.getElementById(`container-${peerId}-${type}`);
-        if(cont) cont.remove();
-    });
-    updateGridLayout();
+        if (peerConnections[pcKey]) { peerConnections[pcKey].close(); delete peerConnections[pcKey]; }
+        const cont = document.getElementById(`container-${peerId}-${type}`); if(cont) cont.remove();
+    }); updateGridLayout();
 }
 
 function toggleAudio(forceMute = false) {
-    if (!localStream) return;
-    isAudioMuted = forceMute ? true : !isAudioMuted;
+    if (!localStream) return; isAudioMuted = forceMute ? true : !isAudioMuted;
     localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
-    
     const btn = document.getElementById('btn-mic');
-    if (isAudioMuted) {
-        btn.classList.replace('active-blue', 'active-red');
-        btn.innerHTML = SVGs.micOff;
-        document.getElementById('mic-local').style.display = 'none';
-    } else {
-        btn.classList.replace('active-red', 'active-blue');
-        btn.innerHTML = SVGs.micOn;
-        document.getElementById('mic-local').style.display = 'flex';
-    }
+    if (isAudioMuted) { btn.classList.replace('active-blue', 'active-red'); btn.innerHTML = SVGs.micOff; document.getElementById('mic-local').style.display = 'none'; } 
+    else { btn.classList.replace('active-red', 'active-blue'); btn.innerHTML = SVGs.micOn; document.getElementById('mic-local').style.display = 'flex'; }
 }
 
 function toggleVideo(forceMute = false) {
-    if (!localStream) return;
-    isVideoMuted = forceMute ? true : !isVideoMuted;
+    if (!localStream) return; isVideoMuted = forceMute ? true : !isVideoMuted;
     localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
-    
-    ws.send(JSON.stringify({ type: 'cam-state', state: isVideoMuted, target: 'all', senderId: clientId }));
-
-    const btn = document.getElementById('btn-cam');
-    const localCont = document.getElementById('local-container');
-    
-    if (isVideoMuted) {
-        btn.classList.replace('active-blue', 'active-red');
-        btn.innerHTML = SVGs.camOff;
-        localCont.classList.add('cam-off');
-        localCont.classList.remove('pip');
-    } else {
-        btn.classList.replace('active-red', 'active-blue');
-        btn.innerHTML = SVGs.camOn;
-        localCont.classList.remove('cam-off');
-    }
+    sendSignaling({ type: 'cam-state', state: isVideoMuted, target: 'all', senderId: clientId });
+    const btn = document.getElementById('btn-cam'); const localCont = document.getElementById('local-container');
+    if (isVideoMuted) { btn.classList.replace('active-blue', 'active-red'); btn.innerHTML = SVGs.camOff; localCont.classList.add('cam-off'); localCont.classList.remove('pip'); } 
+    else { btn.classList.replace('active-red', 'active-blue'); btn.innerHTML = SVGs.camOn; localCont.classList.remove('cam-off'); }
 }
 
 function toggleMeetingState() {
     const btn = document.getElementById('btn-meeting-state');
-    if (isMeetingActive) {
-        ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
-        isMeetingActive = false;
-        btn.innerHTML = SVGs.startCall;
-        btn.classList.replace('active-red', 'active-blue');
-    } else {
-        ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
-        isMeetingActive = true;
-        btn.innerHTML = SVGs.endCall;
-        btn.classList.replace('active-blue', 'active-red');
-    }
+    if (isMeetingActive) { sendSignaling({ type: 'admin-action', action: 'pause-meeting' }); isMeetingActive = false; btn.innerHTML = SVGs.startCall; btn.classList.replace('active-red', 'active-blue'); } 
+    else { sendSignaling({ type: 'admin-action', action: 'resume-meeting' }); isMeetingActive = true; btn.innerHTML = SVGs.endCall; btn.classList.replace('active-blue', 'active-red'); }
 }
 
 function stopAllMediaAndConnections() {
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     if (myScreenStream) stopScreenShare();
     if (mediaRecorder && mediaRecorder.state === 'recording') toggleRecording();
-    for (let id in peerConnections) peerConnections[id].close();
-    peerConnections = {};
+    for (let id in peerConnections) peerConnections[id].close(); peerConnections = {};
     document.querySelectorAll('.remote-video').forEach(e => e.remove());
 }
 
 async function toggleRecording() {
     const btn = document.getElementById('btn-record');
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-        btn.classList.remove('record-pulse');
-        return;
-    }
+    if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); btn.classList.remove('record-pulse'); return; }
     try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         mediaRecorder = new MediaRecorder(stream);
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
-            stream.getTracks().forEach(t => t.stop());
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            recordedChunks = [];
-            const url = URL.createObjectURL(blob);
-            const dateStr = new Date().toLocaleString();
-            const list = document.getElementById('recordings-list');
-            if (list.innerText.includes('No recordings')) list.innerHTML = '';
-            const recId = 'rec_' + Date.now();
-            list.innerHTML += `
-                <div class="rec-item" id="${recId}">
-                    <div class="rec-title">Session - ${dateStr}</div>
-                    <div class="rec-actions">
-                        <button class="rec-btn btn-dl" onclick="downloadRecording('${url}', '${dateStr}')">Save MP4</button>
-                        <button class="rec-btn btn-del" onclick="document.getElementById('${recId}').remove()">Trash</button>
-                    </div>
-                </div>
-            `;
-            if(!document.getElementById('main-sidebar').classList.contains('show')) toggleSidebar();
-            switchSidebarTab('admin');
+            stream.getTracks().forEach(t => t.stop()); const blob = new Blob(recordedChunks, { type: 'video/webm' }); recordedChunks = [];
+            const url = URL.createObjectURL(blob); const dateStr = new Date().toLocaleString(); const list = document.getElementById('recordings-list');
+            if (list.innerText.includes('No recordings')) list.innerHTML = ''; const recId = 'rec_' + Date.now();
+            list.innerHTML += `<div class="rec-item" id="${recId}"><div class="rec-title">Session - ${dateStr}</div><div class="rec-actions"><button class="rec-btn btn-dl" onclick="downloadRecording('${url}', '${dateStr}')">Save MP4</button><button class="rec-btn btn-del" onclick="document.getElementById('${recId}').remove()">Trash</button></div></div>`;
+            if(!document.getElementById('main-sidebar').classList.contains('show')) toggleSidebar(); switchSidebarTab('admin');
         };
-        mediaRecorder.start();
-        btn.classList.add('record-pulse');
+        mediaRecorder.start(); btn.classList.add('record-pulse');
     } catch (err) {}
 }
 
 function downloadRecording(url, date) {
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = `BlackMeet_Record_${date.replace(/[/, :]/g, '_')}.mp4`;
-    document.body.appendChild(a);
-    a.click();
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `BlackMeet_Record_${date.replace(/[/, :]/g, '_')}.mp4`; document.body.appendChild(a); a.click();
 }
 
 async function toggleScreenShare() {
@@ -688,102 +536,52 @@ async function toggleScreenShare() {
         try {
             myScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
             Object.keys(peerConnections).forEach(pcKey => {
-                if (pcKey.endsWith('-camera')) {
-                    const peerId = pcKey.split('-')[0];
-                    createPeerConnection(peerId, 'screen', true, myScreenStream);
-                }
+                if (pcKey.endsWith('-camera')) { const peerId = pcKey.split('-')[0]; createPeerConnection(peerId, 'screen', true, myScreenStream); }
             });
-            addLocalScreenShare(myScreenStream);
-            isScreenSharing = true;
-            document.getElementById('btn-share').classList.add('active-orange');
+            addLocalScreenShare(myScreenStream); isScreenSharing = true; document.getElementById('btn-share').classList.add('active-orange');
             myScreenStream.getVideoTracks()[0].onended = stopScreenShare;
         } catch (error) {}
-    } else { stopScreenShare(); }
+    } else stopScreenShare();
 }
 
 function stopScreenShare() {
     if (!isScreenSharing) return;
     if (myScreenStream) myScreenStream.getTracks().forEach(t => t.stop());
-    ws.send(JSON.stringify({ type: 'stop-screen', senderId: clientId }));
-    Object.keys(peerConnections).forEach(pcKey => {
-        if (pcKey.endsWith('-screen')) {
-            peerConnections[pcKey].close();
-            delete peerConnections[pcKey];
-        }
-    });
-    myScreenStream = null;
-    const localScreenCont = document.getElementById('local-screen-container');
-    if (localScreenCont) localScreenCont.remove();
-    isScreenSharing = false;
-    document.getElementById('btn-share').classList.remove('active-orange');
-    updateGridLayout();
+    sendSignaling({ type: 'stop-screen', senderId: clientId });
+    Object.keys(peerConnections).forEach(pcKey => { if (pcKey.endsWith('-screen')) { peerConnections[pcKey].close(); delete peerConnections[pcKey]; } });
+    myScreenStream = null; const localScreenCont = document.getElementById('local-screen-container'); if (localScreenCont) localScreenCont.remove();
+    isScreenSharing = false; document.getElementById('btn-share').classList.remove('active-orange'); updateGridLayout();
 }
 
 function addLocalScreenShare(stream) {
-    const container = document.createElement('div');
-    container.className = 'video-container';
-    container.id = 'local-screen-container';
-    container.setAttribute('data-type', 'screen');
-
+    const container = document.createElement('div'); container.className = 'video-container'; container.id = 'local-screen-container'; container.setAttribute('data-type', 'screen');
     const menuId = 'menu-local-screen';
-    container.innerHTML = `
-        <div class="menu-wrapper">
-            <button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button>
-            <div class="dropdown-menu" id="${menuId}">
-                <button class="dropdown-item" onclick="togglePin('local-screen-container'); toggleMenu('${menuId}')">📌 Pin Feed</button>
-                <button class="dropdown-item" onclick="makeFullscreen('local-screen-container'); toggleMenu('${menuId}')">🔲 Fullscreen</button>
-                <button class="dropdown-item danger" onclick="stopScreenShare(); toggleMenu('${menuId}')">🛑 Stop Sharing</button>
-            </div>
-        </div>
-        <video autoplay playsinline muted></video>
-        <div class="label screen-lbl"><span>Your Screen</span></div>
-    `;
-    container.querySelector('video').srcObject = stream;
-    setupDoubleClickHandler(container);
-    document.getElementById('video-grid').appendChild(container);
-    updateGridLayout();
+    container.innerHTML = `<div class="menu-wrapper"><button class="three-dots-btn" onclick="toggleMenu('${menuId}')">⋮</button><div class="dropdown-menu" id="${menuId}"><button class="dropdown-item" onclick="togglePin('local-screen-container'); toggleMenu('${menuId}')">📌 Pin Feed</button><button class="dropdown-item" onclick="makeFullscreen('local-screen-container'); toggleMenu('${menuId}')">🔲 Fullscreen</button><button class="dropdown-item danger" onclick="stopScreenShare(); toggleMenu('${menuId}')">🛑 Stop Sharing</button></div></div><video autoplay playsinline muted></video><div class="label screen-lbl"><span>Your Screen</span></div>`;
+    container.querySelector('video').srcObject = stream; setupDoubleClickHandler(container); document.getElementById('video-grid').appendChild(container); updateGridLayout();
 }
 
-function clearChat() {
-    if(confirm("Clear room chat history for everyone?")) ws.send(JSON.stringify({ type: 'admin-action', action: 'clear-chat' }));
-}
-
+function clearChat() { if(confirm("Clear room chat history?")) sendSignaling({ type: 'admin-action', action: 'clear-chat' }); }
 function downloadChat() {
     let text = "=== Black Meet Chat History ===\n\n";
-    document.querySelectorAll('.chat-msg').forEach(msg => {
-        const name = msg.querySelector('b').innerText;
-        const content = msg.innerText.replace(name, '').trim();
-        text += `[${name}] ${content}\n`;
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'})); 
-    a.download = 'Chat_History.txt'; a.click();
+    document.querySelectorAll('.chat-msg').forEach(msg => { const name = msg.querySelector('b').innerText; const content = msg.innerText.replace(name, '').trim(); text += `[${name}] ${content}\n`; });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'})); a.download = 'Chat_History.txt'; a.click();
 }
 
 function sendChat() {
     const input = document.getElementById('chat-input');
-    if (input.value.trim() !== '') {
-        ws.send(JSON.stringify({ type: 'chat', text: input.value, senderName: myUsername }));
-        input.value = '';
-    }
+    if (input.value.trim() !== '') { sendSignaling({ type: 'chat', text: input.value, senderName: myUsername }); input.value = ''; }
 }
 document.getElementById('chat-input')?.addEventListener('keypress', function (e) { if (e.key === 'Enter') sendChat(); });
 
 function appendChat(msg, isHistory = false) {
     const chatBox = document.getElementById('chat-messages');
-    let senderName = msg.senderName || (msg.role === 'admin' ? 'Admin' : `User`);
-    const isMe = msg.sender === clientId;
-    if (isMe) senderName = 'You';
+    let senderName = msg.senderName || (msg.role === 'admin' ? 'Admin' : `User`); const isMe = msg.sender === clientId; if (isMe) senderName = 'You';
     chatBox.innerHTML += `<div class="chat-msg ${isMe ? 'me' : ''}"><b>${senderName}</b> ${msg.text}</div>`;
-    
     if (!isHistory) {
         chatBox.scrollTop = chatBox.scrollHeight;
         if(!document.getElementById('main-sidebar').classList.contains('show')) {
             const chatBtn = document.querySelector('[title="Sidebar"]');
-            if(chatBtn) {
-                chatBtn.style.transform = "scale(1.2)"; chatBtn.style.background = "var(--c-blue)";
-                setTimeout(() => { chatBtn.style.transform = "scale(1)"; chatBtn.style.background = "rgba(255,255,255,0.05)";}, 1000);
-            }
+            if(chatBtn) { chatBtn.style.transform = "scale(1.2)"; chatBtn.style.background = "var(--c-blue)"; setTimeout(() => { chatBtn.style.transform = "scale(1)"; chatBtn.style.background = "rgba(255,255,255,0.05)";}, 1000); }
         }
     } else chatBox.scrollTop = chatBox.scrollHeight;
 }

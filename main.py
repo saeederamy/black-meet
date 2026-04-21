@@ -1,9 +1,10 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import json
 import os
 import uuid
+import subprocess
 
 app = FastAPI()
 
@@ -29,7 +30,6 @@ def save_rooms(rooms):
 
 class ConnectionManager:
     def __init__(self):
-        # { room_id: { websocket: {"client_id": id, "role": role} } }
         self.active_connections = {}
         self.meeting_status = {}
         self.chat_history = {}
@@ -91,13 +91,42 @@ async def login_api(request: Request):
         
     return {"success": False, "message": "Invalid Credentials."}
 
-# API های مدیریت اتاق‌ها
+# --- System Update API ---
+def restart_server():
+    import time
+    time.sleep(2)
+    os.system("systemctl restart black-meet.service")
+
+@app.post("/api/system/update")
+async def system_update(request: Request, bg_tasks: BackgroundTasks):
+    try:
+        # دریافت تغییرات جدید از گیت‌هاب
+        subprocess.run(["git", "fetch", "--all"], cwd=BASE_DIR, check=True)
+        status = subprocess.run(["git", "status", "-uno"], cwd=BASE_DIR, capture_output=True, text=True)
+        
+        if "Your branch is up to date" in status.stdout:
+            return {"success": True, "updated": False, "message": "System is already up-to-date! No changes found."}
+        
+        # جایگزینی اجباری فایل‌ها
+        subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=BASE_DIR, check=True)
+        
+        # آپدیت پکیج‌های پایتون (اگر نصب دستی انجام شده)
+        pip_path = os.path.join(BASE_DIR, "venv", "bin", "pip")
+        if os.path.exists(pip_path):
+            subprocess.run([pip_path, "install", "-r", "requirements.txt"], cwd=BASE_DIR)
+        
+        # ری‌استارت سرویس در بک‌گراند
+        bg_tasks.add_task(restart_server)
+        return {"success": True, "updated": True, "message": "Update successfully applied! System is restarting..."}
+    except Exception as e:
+        return {"success": False, "message": f"Update Error: {str(e)}"}
+
+# --- Rooms API ---
 @app.get("/api/rooms")
 async def get_rooms(username: str, role: str):
     rooms = load_rooms()
     user_rooms = {}
     for r_id, r_data in rooms.items():
-        # ادمین همه اتاق‌ها را می‌بیند، یوزر فقط اتاق‌های خودش را
         if role == 'admin' or username in r_data.get("members", []):
             user_rooms[r_id] = r_data
     return {"success": True, "rooms": user_rooms}
@@ -152,7 +181,6 @@ async def update_members(room_id: str, request: Request):
         return {"success": True}
     return {"success": False}
 
-# تغییر مسیر وب‌سوکت برای شناسایی اتاق
 @app.websocket("/ws/{room_id}/{client_id}/{role}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, client_id: str, role: str):
     await manager.connect(room_id, websocket, client_id, role)

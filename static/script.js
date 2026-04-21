@@ -5,7 +5,7 @@ const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' 
 const clientId = Math.random().toString(36).substring(7);
 let myRole = 'user';
 let myUsername = 'User'; 
-let currentRoomId = null; // نگهداری شناسه اتاق فعلی
+let currentRoomId = null;
 let peerNames = {}; 
 
 let isAudioMuted = false;
@@ -30,16 +30,10 @@ const SVGs = {
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
 document.getElementById('btn-cam').innerHTML = SVGs.camOn;
 
+// حل باگ چرخ‌دنده در لابی
 document.addEventListener('click', (e) => {
     if (!e.target.matches('.three-dots-btn') && !e.target.matches('.r-menu-btn')) {
         document.querySelectorAll('.dropdown-menu, .r-dropdown').forEach(m => m.classList.remove('show'));
-    }
-});
-
-document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement) {
-        document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
-        document.getElementById('local-container').classList.remove('pip');
     }
 });
 
@@ -97,7 +91,7 @@ async function login() {
         
         if (result.success) {
             myRole = result.role;
-            myUsername = result.username; // استفاده از یوزرنیم تمیز شده
+            myUsername = result.username;
             
             if (myRole === 'admin') {
                 document.getElementById('admin-controls').style.display = 'inline-flex';
@@ -110,11 +104,39 @@ async function login() {
             document.getElementById('login-wrapper').style.display = 'none';
             document.getElementById('rooms-wrapper').style.display = 'flex';
             
-            fetchRooms(); // لود کردن اتاق‌ها
+            fetchRooms();
         } else {
             alert("Authorization Denied!");
         }
     } catch (error) { alert("Server Offline."); }
+}
+
+/* ================= WEB UPDATER ================= */
+async function checkUpdate() {
+    const btn = document.getElementById('btn-sys-update');
+    btn.innerText = "⏳ Checking...";
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/system/update', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            if (result.updated) {
+                alert(result.message);
+                setTimeout(() => { window.location.reload(); }, 3000);
+            } else {
+                alert(result.message);
+            }
+        } else {
+            alert("Update failed: " + result.message);
+        }
+    } catch (err) {
+        alert("Network error during update.");
+    }
+    
+    btn.innerText = "🔄 Check & Update System";
+    btn.disabled = false;
 }
 
 /* ================= ROOMS MANAGEMENT ================= */
@@ -204,7 +226,7 @@ async function openManageMembers(roomId) {
     const list = document.getElementById('users-checkboxes');
     list.innerHTML = '';
     dataUsers.users.forEach(u => {
-        if(u !== 'admin') { // ادمین همیشه دسترسی دارد
+        if(u !== 'admin') {
             const checked = currentMembers.includes(u) ? 'checked' : '';
             list.innerHTML += `<label><input type="checkbox" value="${u}" ${checked}> ${u}</label>`;
         }
@@ -247,7 +269,6 @@ function leaveRoom() {
     fetchRooms();
 }
 
-/* بقیه توابع کلاسیک میتینگ (سایدبار، چت، تب‌ها، و...) */
 function toggleSidebar() { document.getElementById('main-sidebar').classList.toggle('show'); }
 function switchSidebarTab(tabName) {
     document.querySelectorAll('.sb-tab').forEach(t => t.classList.remove('active'));
@@ -310,7 +331,6 @@ async function initMedia() {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // اتصال به وب سوکت شامل آیدی اتاق است
     ws = new WebSocket(`${protocol}//${window.location.host}/ws/${currentRoomId}/${clientId}/${myRole}`);
 
     ws.onmessage = async (event) => {
@@ -366,14 +386,16 @@ function connectWebSocket() {
                 if (myRole !== 'admin') {
                     isMeetingActive = false;
                     document.getElementById('meeting-overlay').style.display = 'flex';
-                    if (!isAudioMuted) toggleAudio(true); 
-                    if (!isVideoMuted) toggleVideo(true); 
+                    stopAllMediaAndConnections();
                 }
                 break;
             case 'meeting-resumed':
                 if (myRole !== 'admin') {
                     isMeetingActive = true;
                     document.getElementById('meeting-overlay').style.display = 'none';
+                    initMedia().then(() => {
+                        ws.send(JSON.stringify({ type: 'user-joined', client_id: clientId, role: myRole }));
+                    });
                 }
                 break;
             case 'force-action':

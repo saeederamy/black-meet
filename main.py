@@ -18,14 +18,14 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def load_rooms():
     if not os.path.exists(ROOMS_FILE):
         default = {"default_room": {"name": "General Lounge", "members": []}}
-        with open(ROOMS_FILE, "w") as f:
+        with open(ROOMS_FILE, "w", encoding="utf-8") as f:
             json.dump(default, f)
         return default
-    with open(ROOMS_FILE, "r") as f:
+    with open(ROOMS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_rooms(rooms):
-    with open(ROOMS_FILE, "w") as f:
+    with open(ROOMS_FILE, "w", encoding="utf-8") as f:
         json.dump(rooms, f)
 
 class ConnectionManager:
@@ -79,11 +79,11 @@ async def login_api(request: Request):
         return {"success": False, "message": "Database not found."}
 
     try:
-        with open(USERS_FILE, "r") as f:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split(':')
-                if len(parts) == 3:
-                    u, p, r = parts
+                if len(parts) >= 3:
+                    u, p, r = parts[:3]
                     if u == username and p == password:
                         return {"success": True, "role": r, "username": u}
     except Exception as e:
@@ -117,8 +117,9 @@ async def system_update(request: Request, bg_tasks: BackgroundTasks):
         return {"success": False, "message": f"Update Error: {str(e)}"}
 
 # --- Rooms API ---
+# اضافه شدن متغیر t برای دور زدن کش بدون گرفتن خطای امنیتی از سمت FastAPI
 @app.get("/api/rooms")
-async def get_rooms(username: str, role: str):
+async def get_rooms(username: str, role: str, t: str = None):
     rooms = load_rooms()
     user_rooms = {}
     for r_id, r_data in rooms.items():
@@ -127,13 +128,13 @@ async def get_rooms(username: str, role: str):
     return {"success": True, "rooms": user_rooms}
 
 @app.get("/api/users")
-async def get_users():
+async def get_users(t: str = None):
     users = []
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split(':')
-                if len(parts) == 3:
+                if len(parts) >= 3:
                     users.append(parts[0])
     return {"success": True, "users": users}
 

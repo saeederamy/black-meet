@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Black Meet - Glossy</title>
     <style>
         :root {
@@ -20,12 +20,13 @@
 
         body {
             background-color: var(--bg-dark);
-            /* افکت نوری براق سفید/خاکستری در پس‌زمینه */
             background-image: 
                 radial-gradient(circle at 15% 50%, rgba(255, 255, 255, 0.04), transparent 25%),
                 radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.04), transparent 25%);
             color: var(--text-light);
+            /* رفع مشکل مخفی شدن پایین صفحه در مرورگرهای موبایل */
             height: 100vh;
+            height: 100dvh; 
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -41,13 +42,8 @@
         }
 
         /* --- Login Screen --- */
-        #login-wrapper {
-            flex: 1; display: flex; align-items: center; justify-content: center;
-        }
-        #login-screen {
-            width: 100%; max-width: 400px; padding: 40px; text-align: center;
-            display: flex; flex-direction: column; gap: 20px;
-        }
+        #login-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        #login-screen { width: 100%; max-width: 400px; padding: 40px 30px; text-align: center; display: flex; flex-direction: column; gap: 20px; }
         #login-screen h2 { font-size: 26px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 15px rgba(255,255,255,0.3); }
         
         input {
@@ -64,11 +60,10 @@
         .btn-primary:hover { background: #e2e2e2; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
 
         /* --- Meet Screen --- */
-        #meet-screen { display: none; flex-direction: column; height: 100vh; width: 100vw; }
+        #meet-screen { display: none; flex-direction: column; height: 100%; width: 100%; }
         
-        #waiting-room { display: none; flex: 1; align-items: center; justify-content: center; flex-direction: column; font-size: 22px; color: #bbb; }
+        #waiting-room { display: none; flex: 1; align-items: center; justify-content: center; flex-direction: column; font-size: 22px; color: #bbb; text-align: center; padding: 20px;}
         
-        /* محیط اصلی: جدا شده از نوار پایین */
         .workspace { flex: 1; display: flex; padding: 20px; gap: 20px; overflow: hidden; }
 
         #video-grid {
@@ -82,7 +77,7 @@
             border: 1px solid var(--glass-border);
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
         }
-        .video-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000; border-radius: 0; }
+        .video-container.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 1000; border-radius: 0; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
         .label {
@@ -91,7 +86,6 @@
             font-size: 13px; border: 1px solid rgba(255,255,255,0.1);
         }
 
-        /* پنل چت در کنار */
         .sidebar {
             flex: 1; max-width: 320px; display: flex; flex-direction: column;
             padding: 20px;
@@ -102,7 +96,7 @@
         .chat-msg b { color: #fff; display: block; margin-bottom: 4px; font-size: 12px;}
         
         .chat-input { display: flex; gap: 10px; margin-top: 15px; }
-        .chat-input input { padding: 12px; border-radius: 8px; }
+        .chat-input input { padding: 12px; border-radius: 8px; flex: 1; min-width: 0; }
         .chat-input button { background: #fff; color: #000; border: none; border-radius: 8px; padding: 0 15px; font-weight: bold; cursor: pointer;}
 
         /* --- Bottom Bar --- */
@@ -120,13 +114,58 @@
         .ctrl-btn:hover { background: rgba(255, 255, 255, 0.2); transform: scale(1.05); }
         .ctrl-btn svg { width: 24px; height: 24px; fill: currentColor; }
 
-        /* رنگ‌های اکتیو دکمه‌ها */
         .ctrl-btn.active-blue { background: var(--btn-blue); border-color: var(--btn-blue); }
         .ctrl-btn.active-red { background: var(--btn-red); border-color: var(--btn-red); }
         .ctrl-btn.active-green { background: var(--btn-green); border-color: var(--btn-green); }
 
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
+
+        /* --- استایل‌های مخصوص موبایل و تبلت --- */
+        @media (max-width: 768px) {
+            .workspace {
+                flex-direction: column; /* چت می‌رود زیر ویدیوها */
+                padding: 10px;
+                gap: 10px;
+            }
+
+            #video-grid {
+                flex: 1.5; /* ویدیوها فضای بیشتری بگیرند */
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* کوچکتر شدن ویدیوها در موبایل */
+                gap: 10px;
+            }
+
+            .sidebar {
+                flex: 1; /* چت فضای باقی‌مانده را پر می‌کند */
+                max-width: 100%;
+                padding: 15px;
+            }
+
+            .bottom-bar {
+                height: auto;
+                padding: 15px 10px;
+                gap: 12px;
+            }
+
+            .ctrl-btn {
+                width: 48px;
+                height: 48px;
+            }
+
+            .ctrl-btn svg {
+                width: 20px;
+                height: 20px;
+            }
+
+            #admin-controls {
+                padding-left: 12px;
+            }
+
+            #admin-controls .ctrl-btn {
+                width: auto;
+                padding: 0 15px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -135,7 +174,7 @@
         <div id="login-screen" class="glass-panel">
             <h2>Black Meet</h2>
             <p style="color: #999; font-size: 14px; margin-bottom: 10px;">Secure Workspace</p>
-            <input type="text" id="username" placeholder="Username" autocomplete="off">
+            <input type="text" id="username" placeholder="Username" autocomplete="off" autocapitalize="none">
             <input type="password" id="password" placeholder="Password">
             <button class="btn-primary" onclick="login()">Connect</button>
         </div>

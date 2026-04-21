@@ -10,7 +10,6 @@ let isAudioMuted = false;
 let isVideoMuted = false;
 let isMeetingActive = true;
 
-// کدهای خام SVG برای سرعت بالا و استایل گوگل میت
 const SVGs = {
     micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
     micOff: '<svg viewBox="0 0 24 24"><path d="M19 11h-2c0 .91-.26 1.75-.69 2.48l1.46 1.46A6.921 6.921 0 0019 11zM14.93 14.93l-2.43-2.43c.03-.16.05-.33.05-.5V5c0-1.66-1.34-3-3-3S6.5 3.34 6.5 5v1.07l-2 2V5c0-2.76 2.24-5 5-5s5 2.24 5 5v7c0 .5-.1 1-.26 1.47l1.69 1.69c.56-.84.95-1.8.99-2.85h2c-.04 1.57-.49 3.01-1.23 4.21l1.45 1.45c.95-1.39 1.55-3.05 1.61-4.85zM12 14c-1.66 0-3-1.34-3-3V5.59L15.41 15C14.48 15.65 13.3 16 12 16c-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c1.66-.24 3.16-.99 4.31-2.04l-1.39-1.39C14.83 15.54 13.48 16 12 16v-2z"/></svg>',
@@ -20,13 +19,13 @@ const SVGs = {
     startCall: '<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>'
 };
 
-// مقداردهی اولیه آیکون‌ها
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
 document.getElementById('btn-cam').innerHTML = SVGs.camOn;
 
 async function login() {
-    const user = document.getElementById('username').value;
-    const pass = document.getElementById('password').value;
+    // مشکل لاگین گوشی: حذف فاصله‌های اضافی و کوچک کردن حروف
+    const user = document.getElementById('username').value.trim().toLowerCase();
+    const pass = document.getElementById('password').value.trim();
     if (!user || !pass) return;
 
     try {
@@ -46,19 +45,17 @@ async function login() {
                 document.getElementById('btn-meeting-state').innerHTML = SVGs.endCall;
             }
 
-            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('login-wrapper').style.display = 'none';
             document.getElementById('meet-screen').style.display = 'flex';
 
             await initMedia();
             connectWebSocket();
-            
-            // قابلیت فول‌اسکرین برای ویدیوی خودمان
             setupFullscreen(document.getElementById('local-container'));
         } else {
-            alert("Authentication Failed!");
+            alert("Authentication Failed! Please check your credentials.");
         }
     } catch (error) {
-        alert("Server Error.");
+        alert("Server Error. Make sure you are using HTTPS.");
     }
 }
 
@@ -67,7 +64,6 @@ async function initMedia() {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('local-video').srcObject = localStream;
         
-        // اطمینان از اعمال وضعیت کلیدها روی استریم جدید
         localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
         localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
     } catch(e) {
@@ -98,7 +94,7 @@ function connectWebSocket() {
                 removeUserVideo(message.client_id);
                 break;
             case 'chat':
-                appendChat(message);
+                appendChat(message); // پیام‌ها حالا فقط از طریق سرور دریافت و چاپ می‌شوند
                 break;
             case 'meeting-paused':
                 if (myRole !== 'admin') {
@@ -125,7 +121,6 @@ function connectWebSocket() {
     };
 }
 
-// بستن کامل ارتباطات کاربران هنگام توقف جلسه
 function stopAllMediaAndConnections() {
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -138,23 +133,18 @@ function stopAllMediaAndConnections() {
     document.querySelectorAll('.remote-video').forEach(e => e.remove());
 }
 
-// دکمه کنترل قطع و وصل توسط مدیر
 function toggleMeetingState() {
     const btn = document.getElementById('btn-meeting-state');
     if (isMeetingActive) {
-        // پایان جلسه
         ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
         isMeetingActive = false;
         btn.innerHTML = SVGs.startCall;
-        btn.classList.replace('danger', 'success');
-        btn.title = "Start Meeting";
+        btn.classList.replace('active-red', 'active-green');
     } else {
-        // شروع مجدد جلسه
         ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
         isMeetingActive = true;
         btn.innerHTML = SVGs.endCall;
-        btn.classList.replace('success', 'danger');
-        btn.title = "End Meeting";
+        btn.classList.replace('active-green', 'active-red');
     }
 }
 
@@ -172,7 +162,12 @@ function createPeerConnection(peerId, isInitiator) {
         }
     };
 
-    pc.ontrack = event => { addRemoteVideo(peerId, event.streams[0]); };
+    pc.ontrack = event => {
+        // مشکل نیامدن تصویر بقیه: اطمینان از دریافت کامل استریم
+        if (event.streams && event.streams[0]) {
+            addRemoteVideo(peerId, event.streams[0]);
+        }
+    };
 
     if (isInitiator) {
         pc.createOffer().then(offer => {
@@ -202,18 +197,13 @@ async function handleIceCandidate(message) {
     if (pc) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
 }
 
-// نمایش ویدیو با قابلیت فول‌اسکرین با دابل کلیک (مخصوص اسکرین شیر)
 function addRemoteVideo(peerId, stream) {
     if (document.getElementById(`container-${peerId}`)) return;
     
     const container = document.createElement('div');
     container.className = 'video-container remote-video';
     container.id = `container-${peerId}`;
-    
-    const hint = document.createElement('div');
-    hint.className = 'expand-hint';
-    hint.innerText = "Double click to expand";
-    container.appendChild(hint);
+    container.title = "Double click to fullscreen";
 
     const video = document.createElement('video');
     video.id = `video-${peerId}`;
@@ -231,12 +221,10 @@ function addRemoteVideo(peerId, stream) {
     document.getElementById('video-grid').appendChild(container);
 }
 
-// تابع فعال‌سازی فول‌اسکرین
 function setupFullscreen(containerElement) {
     containerElement.ondblclick = () => {
         if (!document.fullscreenElement) {
-            containerElement.requestFullscreen().catch(err => {
-                // فال‌بک برای مرورگرهای قدیمی: فقط کلاس را اضافه می‌کنیم
+            containerElement.requestFullscreen().catch(() => {
                 containerElement.classList.add('fullscreen');
             });
         } else {
@@ -244,7 +232,6 @@ function setupFullscreen(containerElement) {
         }
     };
     
-    // خروج از فول اسکرین با دکمه ESC در حالت کلاس فیک
     document.addEventListener('fullscreenchange', () => {
         if (!document.fullscreenElement) {
             containerElement.classList.remove('fullscreen');
@@ -261,7 +248,6 @@ function removeUserVideo(peerId) {
     if (container) container.remove();
 }
 
-// کنترل قطعی میکروفون با آپدیت آیکون‌های SVG
 function toggleAudio(forceMute = false) {
     if (!localStream) return;
     isAudioMuted = forceMute ? true : !isAudioMuted;
@@ -270,15 +256,14 @@ function toggleAudio(forceMute = false) {
     
     const btn = document.getElementById('btn-mic');
     if (isAudioMuted) {
-        btn.classList.add('danger');
+        btn.classList.replace('active-green', 'active-red');
         btn.innerHTML = SVGs.micOff;
     } else {
-        btn.classList.remove('danger');
+        btn.classList.replace('active-red', 'active-green');
         btn.innerHTML = SVGs.micOn;
     }
 }
 
-// کنترل قطعی دوربین با آپدیت آیکون‌های SVG
 function toggleVideo(forceMute = false) {
     if (!localStream) return;
     isVideoMuted = forceMute ? true : !isVideoMuted;
@@ -287,10 +272,10 @@ function toggleVideo(forceMute = false) {
     
     const btn = document.getElementById('btn-cam');
     if (isVideoMuted) {
-        btn.classList.add('danger');
+        btn.classList.replace('active-blue', 'active-red');
         btn.innerHTML = SVGs.camOff;
     } else {
-        btn.classList.remove('danger');
+        btn.classList.replace('active-red', 'active-blue');
         btn.innerHTML = SVGs.camOn;
     }
 }
@@ -324,8 +309,8 @@ async function toggleScreenShare() {
 function sendChat() {
     const input = document.getElementById('chat-input');
     if (input.value.trim() !== '') {
+        // پیام فقط به سرور ارسال میشه و چاپ محلی حذف شد تا دوتا نشه
         ws.send(JSON.stringify({ type: 'chat', text: input.value }));
-        appendChat({ sender: 'You', role: myRole, text: input.value });
         input.value = '';
     }
 }
@@ -336,7 +321,11 @@ document.getElementById('chat-input')?.addEventListener('keypress', function (e)
 
 function appendChat(msg) {
     const chatBox = document.getElementById('chat-messages');
-    let senderName = msg.sender === 'You' ? 'You' : (msg.role === 'admin' ? 'Host' : `User ${msg.sender.substring(0,4)}`);
-    chatBox.innerHTML += `<div class="chat-msg"><b>${senderName}:</b> ${msg.text}</div>`;
+    
+    // تشخیص اینکه پیام از طرف خودمان است یا دیگران با بررسی آی‌دی کلاینت
+    const isMe = msg.sender === clientId;
+    let senderName = isMe ? 'You' : (msg.role === 'admin' ? 'Host' : `User ${msg.sender.substring(0,4)}`);
+    
+    chatBox.innerHTML += `<div class="chat-msg"><b>${senderName}</b> ${msg.text}</div>`;
     chatBox.scrollTop = chatBox.scrollHeight;
 }

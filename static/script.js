@@ -6,10 +6,27 @@ const clientId = Math.random().toString(36).substring(7);
 let myRole = 'user';
 let isScreenSharing = false;
 
+let isAudioMuted = false;
+let isVideoMuted = false;
+let isMeetingActive = true;
+
+// کدهای خام SVG برای سرعت بالا و استایل گوگل میت
+const SVGs = {
+    micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
+    micOff: '<svg viewBox="0 0 24 24"><path d="M19 11h-2c0 .91-.26 1.75-.69 2.48l1.46 1.46A6.921 6.921 0 0019 11zM14.93 14.93l-2.43-2.43c.03-.16.05-.33.05-.5V5c0-1.66-1.34-3-3-3S6.5 3.34 6.5 5v1.07l-2 2V5c0-2.76 2.24-5 5-5s5 2.24 5 5v7c0 .5-.1 1-.26 1.47l1.69 1.69c.56-.84.95-1.8.99-2.85h2c-.04 1.57-.49 3.01-1.23 4.21l1.45 1.45c.95-1.39 1.55-3.05 1.61-4.85zM12 14c-1.66 0-3-1.34-3-3V5.59L15.41 15C14.48 15.65 13.3 16 12 16c-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c1.66-.24 3.16-.99 4.31-2.04l-1.39-1.39C14.83 15.54 13.48 16 12 16v-2z"/></svg>',
+    camOn: '<svg viewBox="0 0 24 24"><path d="M15 8v8H5V8h10m1-2H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4V7c0-.55-.45-1-1-1z"/></svg>',
+    camOff: '<svg viewBox="0 0 24 24"><path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82L21 17.18V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.54-.18L19.73 21 21 19.73 3.27 2z"/></svg>',
+    endCall: '<svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.52-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>',
+    startCall: '<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>'
+};
+
+// مقداردهی اولیه آیکون‌ها
+document.getElementById('btn-mic').innerHTML = SVGs.micOn;
+document.getElementById('btn-cam').innerHTML = SVGs.camOn;
+
 async function login() {
     const user = document.getElementById('username').value;
     const pass = document.getElementById('password').value;
-    
     if (!user || !pass) return;
 
     try {
@@ -18,7 +35,6 @@ async function login() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: user, password: pass })
         });
-        
         const result = await response.json();
         
         if (result.success) {
@@ -27,20 +43,35 @@ async function login() {
             
             if (myRole === 'admin') {
                 document.getElementById('admin-controls').style.display = 'inline';
+                document.getElementById('btn-meeting-state').innerHTML = SVGs.endCall;
             }
 
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('meet-screen').style.display = 'flex';
 
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('local-video').srcObject = localStream;
-
+            await initMedia();
             connectWebSocket();
+            
+            // قابلیت فول‌اسکرین برای ویدیوی خودمان
+            setupFullscreen(document.getElementById('local-container'));
         } else {
             alert("Authentication Failed!");
         }
     } catch (error) {
-        alert("Server Connection Error.");
+        alert("Server Error.");
+    }
+}
+
+async function initMedia() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('local-video').srcObject = localStream;
+        
+        // اطمینان از اعمال وضعیت کلیدها روی استریم جدید
+        localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
+        localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
+    } catch(e) {
+        console.error("Camera access denied.");
     }
 }
 
@@ -52,10 +83,10 @@ function connectWebSocket() {
         const message = JSON.parse(event.data);
         switch (message.type) {
             case 'user-joined':
-                createPeerConnection(message.client_id, true);
+                if (isMeetingActive) createPeerConnection(message.client_id, true);
                 break;
             case 'offer':
-                handleOffer(message);
+                if (isMeetingActive) handleOffer(message);
                 break;
             case 'answer':
                 handleAnswer(message);
@@ -69,9 +100,22 @@ function connectWebSocket() {
             case 'chat':
                 appendChat(message);
                 break;
-            case 'call-ended':
-                alert('Admin has terminated the session.');
-                window.location.reload();
+            case 'meeting-paused':
+                if (myRole !== 'admin') {
+                    isMeetingActive = false;
+                    stopAllMediaAndConnections();
+                    document.getElementById('main-workspace').style.display = 'none';
+                    document.getElementById('waiting-room').style.display = 'flex';
+                }
+                break;
+            case 'meeting-resumed':
+                if (myRole !== 'admin') {
+                    isMeetingActive = true;
+                    document.getElementById('waiting-room').style.display = 'none';
+                    document.getElementById('main-workspace').style.display = 'flex';
+                    await initMedia();
+                    ws.send(JSON.stringify({ type: 'user-joined', client_id: clientId, role: myRole }));
+                }
                 break;
             case 'force-action':
                 if (message.action === 'mute-mic') toggleAudio(true);
@@ -81,10 +125,46 @@ function connectWebSocket() {
     };
 }
 
+// بستن کامل ارتباطات کاربران هنگام توقف جلسه
+function stopAllMediaAndConnections() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    for (let id in peerConnections) {
+        peerConnections[id].close();
+    }
+    peerConnections = {};
+    document.querySelectorAll('.remote-video').forEach(e => e.remove());
+}
+
+// دکمه کنترل قطع و وصل توسط مدیر
+function toggleMeetingState() {
+    const btn = document.getElementById('btn-meeting-state');
+    if (isMeetingActive) {
+        // پایان جلسه
+        ws.send(JSON.stringify({ type: 'admin-action', action: 'pause-meeting' }));
+        isMeetingActive = false;
+        btn.innerHTML = SVGs.startCall;
+        btn.classList.replace('danger', 'success');
+        btn.title = "Start Meeting";
+    } else {
+        // شروع مجدد جلسه
+        ws.send(JSON.stringify({ type: 'admin-action', action: 'resume-meeting' }));
+        isMeetingActive = true;
+        btn.innerHTML = SVGs.endCall;
+        btn.classList.replace('success', 'danger');
+        btn.title = "End Meeting";
+    }
+}
+
 function createPeerConnection(peerId, isInitiator) {
     const pc = new RTCPeerConnection(configuration);
     peerConnections[peerId] = pc;
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    
+    if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
 
     pc.onicecandidate = event => {
         if (event.candidate) {
@@ -122,13 +202,19 @@ async function handleIceCandidate(message) {
     if (pc) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
 }
 
+// نمایش ویدیو با قابلیت فول‌اسکرین با دابل کلیک (مخصوص اسکرین شیر)
 function addRemoteVideo(peerId, stream) {
-    if (document.getElementById(`video-${peerId}`)) return;
+    if (document.getElementById(`container-${peerId}`)) return;
     
     const container = document.createElement('div');
-    container.className = 'video-container';
+    container.className = 'video-container remote-video';
     container.id = `container-${peerId}`;
     
+    const hint = document.createElement('div');
+    hint.className = 'expand-hint';
+    hint.innerText = "Double click to expand";
+    container.appendChild(hint);
+
     const video = document.createElement('video');
     video.id = `video-${peerId}`;
     video.srcObject = stream;
@@ -141,24 +227,29 @@ function addRemoteVideo(peerId, stream) {
     label.innerText = `User ${peerId.substring(0,4)}`;
     container.appendChild(label);
 
-    if (myRole === 'admin') {
-        const controls = document.createElement('div');
-        controls.className = 'admin-video-controls';
-        
-        const muteMicBtn = document.createElement('button');
-        muteMicBtn.innerText = 'Mute Mic';
-        muteMicBtn.onclick = () => ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-mic', target_id: peerId }));
-        
-        const muteCamBtn = document.createElement('button');
-        muteCamBtn.innerText = 'Block Cam';
-        muteCamBtn.onclick = () => ws.send(JSON.stringify({ type: 'admin-action', action: 'mute-cam', target_id: peerId }));
-
-        controls.appendChild(muteMicBtn);
-        controls.appendChild(muteCamBtn);
-        container.appendChild(controls);
-    }
-
+    setupFullscreen(container);
     document.getElementById('video-grid').appendChild(container);
+}
+
+// تابع فعال‌سازی فول‌اسکرین
+function setupFullscreen(containerElement) {
+    containerElement.ondblclick = () => {
+        if (!document.fullscreenElement) {
+            containerElement.requestFullscreen().catch(err => {
+                // فال‌بک برای مرورگرهای قدیمی: فقط کلاس را اضافه می‌کنیم
+                containerElement.classList.add('fullscreen');
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+    
+    // خروج از فول اسکرین با دکمه ESC در حالت کلاس فیک
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) {
+            containerElement.classList.remove('fullscreen');
+        }
+    });
 }
 
 function removeUserVideo(peerId) {
@@ -170,19 +261,37 @@ function removeUserVideo(peerId) {
     if (container) container.remove();
 }
 
+// کنترل قطعی میکروفون با آپدیت آیکون‌های SVG
 function toggleAudio(forceMute = false) {
-    const track = localStream.getAudioTracks()[0];
-    if (track) {
-        track.enabled = forceMute ? false : !track.enabled;
-        if (forceMute) alert("Admin muted your microphone.");
+    if (!localStream) return;
+    isAudioMuted = forceMute ? true : !isAudioMuted;
+    
+    localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
+    
+    const btn = document.getElementById('btn-mic');
+    if (isAudioMuted) {
+        btn.classList.add('danger');
+        btn.innerHTML = SVGs.micOff;
+    } else {
+        btn.classList.remove('danger');
+        btn.innerHTML = SVGs.micOn;
     }
 }
 
+// کنترل قطعی دوربین با آپدیت آیکون‌های SVG
 function toggleVideo(forceMute = false) {
-    const track = localStream.getVideoTracks()[0];
-    if (track) {
-        track.enabled = forceMute ? false : !track.enabled;
-        if (forceMute) alert("Admin disabled your camera.");
+    if (!localStream) return;
+    isVideoMuted = forceMute ? true : !isVideoMuted;
+    
+    localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
+    
+    const btn = document.getElementById('btn-cam');
+    if (isVideoMuted) {
+        btn.classList.add('danger');
+        btn.innerHTML = SVGs.camOff;
+    } else {
+        btn.classList.remove('danger');
+        btn.innerHTML = SVGs.camOn;
     }
 }
 
@@ -227,13 +336,7 @@ document.getElementById('chat-input')?.addEventListener('keypress', function (e)
 
 function appendChat(msg) {
     const chatBox = document.getElementById('chat-messages');
-    let senderName = msg.sender === 'You' ? 'You' : (msg.role === 'admin' ? 'Admin' : `User ${msg.sender.substring(0,4)}`);
+    let senderName = msg.sender === 'You' ? 'You' : (msg.role === 'admin' ? 'Host' : `User ${msg.sender.substring(0,4)}`);
     chatBox.innerHTML += `<div class="chat-msg"><b>${senderName}:</b> ${msg.text}</div>`;
     chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-function endCall() {
-    if (confirm("End meeting for everyone?")) {
-        ws.send(JSON.stringify({ type: 'admin-action', action: 'end-call' }));
-    }
 }

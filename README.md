@@ -109,7 +109,152 @@ Once completed, simply type `black-meet` anywhere in your terminal to manage you
 <div align="center">
 <i>Built for high-performance, secure, and uncensorable communication.</i>
 </div>
+# 🌟 Black Meet - WebRTC Server Setup (Iran Edition) 🇮🇷
 
+This guide provides a robust, anti-filter **STUN/TURN server configuration (Coturn)** optimized for restricted networks (like Iranian ISPs and Mobile Networks). 
+
+It combines the blazing-fast standard UDP port (`3478`) with a highly secure TLS/TCP tunnel (`4433`) to bypass Deep Packet Inspection (DPI) and strict NAT limitations. 🚀
+
+---
+
+## 🛠️ Step 1: Global Installation (Automated)
+Update your server and install the core `coturn` package. Run this single command on your Ubuntu/Debian server:
+
+```bash
+sudo apt update && sudo apt install coturn -y && sudo systemctl enable coturn
+```
+
+---
+
+## 🔒 Step 2: Generate Free SSL Certificate (PunchSalad)
+To encrypt the WebRTC traffic and bypass network filters, we need a valid SSL certificate. We will use PunchSalad to get a free certificate via DNS verification.
+
+### Obtaining the Certificate:
+1. Go to [PunchSalad Free SSL](https://punchsalad.com/ssl-certificate/).
+2. In the domain input box, enter your TURN subdomain (e.g., `turn.<your-domain.com>`).
+3. For the verification method, select **DNS (TXT Record)**.
+4. Click on **Generate Free SSL**. PunchSalad will provide you with a **TXT Name** and a **TXT Value**.
+
+### Verifying DNS:
+5. Open your cloud provider or CDN dashboard (like ParsPack, Cloudflare, etc.) and go to the DNS section.
+6. Create a new DNS record:
+   - **Type:** `TXT`
+   - **Name:** `_acme-challenge.turn` (or exactly what PunchSalad provided)
+   - **Value:** Paste the long string provided by PunchSalad.
+7. Save the record and wait 2 to 5 minutes for the DNS to propagate.
+8. Go back to PunchSalad and click **Verify**.
+
+### Applying the Certificate to Your Server:
+9. Download and extract the provided ZIP file.
+10. Create two files on your Linux server and paste the text into them:
+
+**Create the Certificate file:**
+```bash
+sudo nano /etc/turn_cert.crt
+```
+*(Paste the content of `certificate.crt` or `fullchain.crt` here and save).*
+
+**Create the Private Key file:**
+```bash
+sudo nano /etc/turn_key.key
+```
+*(Paste the content of `private.key` here and save).*
+
+---
+
+## ⚙️ Step 3: Configure Coturn
+Clear the default configuration and open the file for editing:
+
+```bash
+sudo rm /etc/turnserver.conf
+sudo nano /etc/turnserver.conf
+```
+
+Copy and paste the following configuration. ⚠️ **Make sure to change the IP address and Domain to your own:**
+
+```ini
+# --- 🌐 Port Configurations ---
+# Standard STUN/TURN port (Fastest, UDP/TCP)
+listening-port=3478
+# Secure TLS port for bypassing strict DPI (TCP)
+tls-listening-port=4433
+
+# --- 📡 Network IPs ---
+listening-ip=0.0.0.0
+# IMPORTANT: Replace with your actual server IP
+external-ip=<YOUR_SERVER_IP_HERE>
+
+# --- 📜 SSL Certificates ---
+cert=/etc/turn_cert.crt
+pkey=/etc/turn_key.key
+
+# --- 🔐 Security & Authentication ---
+fingerprint
+lt-cred-mech
+# Define your own custom username and password
+user=<YOUR_USERNAME>:<YOUR_SECURE_PASSWORD>
+# Set this to your main domain name
+realm=<your-domain.com>
+```
+💾 *Save and exit the file (`Ctrl+O`, `Enter`, `Ctrl+X`).*
+
+---
+
+## 🧱 Step 4: Open Firewall Ports
+Ensure your cloud provider's firewall (and internal UFW) allows traffic through these necessary ports:
+
+```bash
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 4433/tcp
+sudo ufw allow 49152:65535/udp
+```
+
+---
+
+## 💻 Step 5: Frontend Configuration (`script.js`)
+Update your frontend application's `configuration` object exactly like this to allow the browser to auto-switch between standard and secure routes:
+
+```javascript
+const configuration = { 
+    'iceServers': [
+        {
+            // ⚡ Route 1: Direct STUN connection
+            'urls': 'stun:turn.<your-domain.com>:3478'
+        },
+        { 
+            // 🔄 Route 2: Standard TURN relay
+            'urls': 'turn:turn.<your-domain.com>:3478',
+            'username': '<YOUR_USERNAME>',
+            'credential': '<YOUR_SECURE_PASSWORD>'
+        },
+        {
+            // 🛡️ Route 3: Secure TLS TURN (Anti-Filter Fallback)
+            'urls': 'turns:turn.<your-domain.com>:4433?transport=tcp',
+            'username': '<YOUR_USERNAME>',
+            'credential': '<YOUR_SECURE_PASSWORD>'
+        }
+    ],
+    // 🌍 Remove strict policies so the browser can negotiate the best path
+    'iceTransportPolicy': 'all'
+};
+```
+
+---
+
+## 🚀 Step 6: Start and Restart Services
+Apply all configurations by restarting the Coturn service and your main application:
+
+```bash
+# 🔄 Restart Coturn (TURN/STUN Server)
+sudo systemctl restart coturn
+sudo systemctl status coturn
+
+# 🟢 Restart your main service (replace 'blackmeet' with your service name)
+sudo systemctl restart blackmeet
+sudo systemctl status blackmeet
+```
+🎉 *If both statuses are active (green), your system is fully operational!*
 
 ## 🛠 OS Compatibility
 

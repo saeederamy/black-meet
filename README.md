@@ -110,7 +110,7 @@ Once completed, simply type `black-meet` anywhere in your terminal to manage you
 <i>Built for high-performance, secure, and uncensorable communication.</i>
 </div>
 
-# 🌟 Black Meet - WebRTC Server Setup (Iran Edition) 🇮🇷
+# 🌟 Black Meet - WebRTC Server Setup (Iran Edition) 
 
 This guide provides a robust, anti-filter **STUN/TURN server configuration (Coturn)** optimized for restricted networks (like Iranian ISPs and Mobile Networks). 
 

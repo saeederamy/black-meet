@@ -237,9 +237,9 @@ If you are updating from an older version of Black Meet, you need to replace you
 **Step 1: Delete the old script**
 Navigate to the folder where your `script-ir.js` is located (usually in your `static` or `public` directory) and remove the old file:
 ```bash
-# Navigate to your static directory first, e.g., cd /var/www/blackmeet/static
-sudo rm script.js
-sudo nano script.js
+cd /opt/black-meet/static
+sudo rm /opt/black-meet/static/script.js
+sudo nano /opt/black-meet/static/script.js
 ```
 
 **Step 2: Paste the new code and Configure**

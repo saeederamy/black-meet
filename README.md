@@ -193,6 +193,7 @@ realm=<domian.ir>
 Ensure your cloud provider's firewall (and internal UFW) allows traffic through these necessary ports:
 
 ```bash
+sudo systemctl restart coturn
 sudo ufw allow 3478/tcp
 sudo ufw allow 3478/udp
 sudo ufw allow 4433/tcp
@@ -240,6 +241,8 @@ Navigate to the folder where your `script-ir.js` is located (usually in your `st
 cd /opt/black-meet/static
 sudo rm /opt/black-meet/static/script.js
 sudo nano /opt/black-meet/static/script.js
+sudo systemctl restart black-meet.service
+sudo nginx -t
 ```
 
 **Step 2: Paste the new code and Configure**

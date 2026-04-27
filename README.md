@@ -267,7 +267,7 @@ Because browsers cache JavaScript files aggressively, you must restart your back
 
 1. Restart your backend service:
 ```bash
-sudo systemctl restart blackmeet
+sudo systemctl restart black-meet.service
 ```
 2. Open your website in the browser and press **`Ctrl + F5`** (Windows) or **`Cmd + Shift + R`** (Mac) to perform a Hard Refresh. On mobile, clear your browser cache.
 ---
@@ -281,8 +281,8 @@ sudo systemctl restart coturn
 sudo systemctl status coturn
 
 # 🟢 Restart your main service (replace 'blackmeet' with your service name)
-sudo systemctl restart blackmeet
-sudo systemctl status blackmeet
+sudo systemctl restart black-meet.service
+sudo systemctl status black-meet.service
 ```
 🎉 *If both statuses are active (green), your system is fully operational!*
 

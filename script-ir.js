@@ -1,37 +1,22 @@
-// =========================================================
-// ⚙️ MAIN CONFIGURATION (Edit ONLY this section)
-// =========================================================
-const SERVER_CONFIG = {
-    turnDomain: "turn.yourdomian.ir",   // 🌐 Your TURN Domain or IP
-    turnPort: "3478",                 // 🔌 Standard Port
-    turnUser: "<YOUR_USERNAME>",            // 👤 TURN Username
-    turnPass: "<YOUR_SECURE_PASSWORD>"         // 🔑 TURN Password
-};
-// =========================================================
-
-// ==========================================
-// Black Meet - Frontend WebRTC Logic
-// ==========================================
-
 let isPolling = false;
 let localStream;
 let peerConnections = {};
 
-// 🌐 TURN/STUN Server Dynamic Configuration
+// تنظیمات قدرتمند Coturn شما برای دور زدن فیلترینگ
 const configuration = { 
     'iceServers': [
         {
-            // Step 1: Fast direct connection via STUN
-            'urls': `stun:${SERVER_CONFIG.turnDomain}:${SERVER_CONFIG.turnPort}`
+            // قدم اول: استفاده از STUN برای تلاش جهت اتصال مستقیم و سریع
+            'urls': 'stun:turn.<domain.ir>:3478'
         },
         { 
-            // Step 2: Fallback to TURN relay if NAT is strict
-            'urls': `turn:${SERVER_CONFIG.turnDomain}:${SERVER_CONFIG.turnPort}`,
-            'username': SERVER_CONFIG.turnUser,
-            'credential': SERVER_CONFIG.turnPass
+            // قدم دوم: استفاده از TURN در صورتی که اتصال مستقیم بسته بود
+            'urls': 'turn:turn.<domain.ir>:3478',
+            'username': '<YOUR_USERNAME>',
+            'credential': '<YOUR_SECURE_PASSWORD>'
         }
     ],
-    // Let the browser negotiate the best path automatically
+    // برداشتن محدودیت تا مرورگر بتواند بهترین مسیر را انتخاب کند
     'iceTransportPolicy': 'all'
 };
 
@@ -41,19 +26,16 @@ let myUsername = 'User';
 let currentRoomId = null;
 let peerNames = {}; 
 
-// Media States
 let isAudioMuted = false;
 let isVideoMuted = false;
 let isMeetingActive = true;
 let isScreenSharing = false;
 let myScreenStream = null;
 
-// Recording
 let mediaRecorder;
 let recordedChunks = [];
 let audioContext;
 
-// SVG Icons for UI
 const SVGs = {
     micOn: '<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>',
     micOff: '<svg viewBox="0 0 24 24"><path d="M19 11h-2c0 .91-.26 1.75-.69 2.48l1.46 1.46A6.921 6.921 0 0019 11zM14.93 14.93l-2.43-2.43c.03-.16.05-.33.05-.5V5c0-1.66-1.34-3-3-3S6.5 3.34 6.5 5v1.07l-2 2V5c0-2.76 2.24-5 5-5s5 2.24 5 5v7c0 .5-.1 1-.26 1.47l1.69 1.69c.56-.84.95-1.8.99-2.85h2c-.04 1.57-.49 3.01-1.23 4.21l1.45 1.45c.95-1.39 1.55-3.05 1.61-4.85zM12 14c-1.66 0-3-1.34-3-3V5.59L15.41 15C14.48 15.65 13.3 16 12 16c-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c1.66-.24 3.16-.99 4.31-2.04l-1.39-1.39C14.83 15.54 13.48 16 12 16v-2z"/></svg>',
@@ -62,18 +44,15 @@ const SVGs = {
     endCall: '<svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.52-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>'
 };
 
-// Set initial icons
 document.getElementById('btn-mic').innerHTML = SVGs.micOn;
 document.getElementById('btn-cam').innerHTML = SVGs.camOn;
 
-// Close dropdowns when clicking outside
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.three-dots-btn') && !e.target.closest('.r-menu-btn')) {
         document.querySelectorAll('.dropdown-menu, .r-dropdown').forEach(m => m.classList.remove('show'));
     }
 });
 
-// Handle exiting fullscreen mode
 document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement) {
         document.querySelectorAll('.video-container').forEach(c => c.classList.remove('fullscreen'));
@@ -82,7 +61,6 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 function getInitials(name) { return name ? name.substring(0, 2).toUpperCase() : 'U'; }
-
 function updateGridLayout() {
     const grid = document.getElementById('video-grid');
     const visibleCount = Array.from(grid.children).filter(c => c.style.display !== 'none').length;
@@ -91,7 +69,6 @@ function updateGridLayout() {
     else grid.classList.add('grid-many');
 }
 
-// 🎤 Audio Volume Meter
 function getAudioContext() {
     if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     return audioContext;
@@ -122,7 +99,6 @@ function attachVolumeMeter(stream, iconId) {
     } catch(err) {}
 }
 
-// 🔐 Authentication & Dashboard
 async function login() {
     const userRaw = document.getElementById('username').value.trim();
     const pass = document.getElementById('password').value.trim();
@@ -167,7 +143,6 @@ async function checkUpdate() {
     btn.innerText = "🔄 Check & Update System"; btn.disabled = false;
 }
 
-// 🚪 Room Management
 async function fetchRooms() {
     try {
         const response = await fetch(`/api/rooms/list?nocache=${Date.now()}`, {
@@ -287,7 +262,7 @@ async function saveMembers() {
     btn.innerText = "Save Users"; btn.disabled = false;
 }
 
-// ================= HTTP POLLING SIGNALING =================
+/* ================= HTTP POLLING SIGNALING ================= */
 async function sendSignaling(msgObj) {
     try {
         await fetch(`/api/signaling/send?nocache=${Date.now()}`, {
@@ -329,99 +304,63 @@ function handleSignalingMessage(message) {
     switch (message.type) {
         case 'chat-history':
             document.getElementById('chat-messages').innerHTML = ''; 
-            message.history.forEach(msg => appendChat(msg, true)); 
-            break;
+            message.history.forEach(msg => appendChat(msg, true)); break;
         case 'user-joined':
             if (isMeetingActive) {
-                // Send local camera stream to the newly joined user
+                // ارسال تصویر دوربین به کاربر جدید
                 createPeerConnection(message.client_id, 'camera', true, localStream);
-                // Send screen stream if we are currently sharing our screen
+                // ارسال تصویر صفحه نمایش به کاربر جدید (اگر در حال شیر کردن هستیم)
                 if (isScreenSharing && myScreenStream) {
                     createPeerConnection(message.client_id, 'screen', true, myScreenStream);
                 }
                 sendSignaling({ type: 'cam-state', state: isVideoMuted, target: message.client_id, senderId: clientId });
             }
             break;
-        case 'offer': 
-            if (isMeetingActive) handleOffer(message); 
-            break;
-        case 'answer': 
-            handleAnswer(message); 
-            break;
-        case 'ice-candidate': 
-            handleIceCandidate(message); 
-            break;
+        case 'offer': if (isMeetingActive) handleOffer(message); break;
+        case 'answer': handleAnswer(message); break;
+        case 'ice-candidate': handleIceCandidate(message); break;
         case 'user-left':
-            removeUserVideo(message.client_id); 
-            delete peerNames[message.client_id]; 
-            refreshUserList(); 
-            break;
-        case 'chat': 
-            appendChat(message); 
-            break;
-        case 'chat-cleared': 
-            document.getElementById('chat-messages').innerHTML = '<div style="text-align:center; color:#888; font-size:12px; margin-top:20px;">Admin cleared chat.</div>'; 
-            break;
+            removeUserVideo(message.client_id); delete peerNames[message.client_id]; refreshUserList(); break;
+        case 'chat': appendChat(message); break;
+        case 'chat-cleared': document.getElementById('chat-messages').innerHTML = '<div style="text-align:center; color:#888; font-size:12px; margin-top:20px;">Admin cleared chat.</div>'; break;
         case 'cam-state':
             const container = document.getElementById(`container-${message.senderId}-camera`);
-            if (container) { message.state === true ? container.classList.add('cam-off') : container.classList.remove('cam-off'); } 
-            break;
+            if (container) { message.state === true ? container.classList.add('cam-off') : container.classList.remove('cam-off'); } break;
         case 'stop-screen':
             const sCont = document.getElementById(`container-${message.senderId}-screen`);
             if (sCont) sCont.remove();
-            if (peerConnections[`${message.senderId}-screen`]) { 
-                peerConnections[`${message.senderId}-screen`].close(); 
-                delete peerConnections[`${message.senderId}-screen`]; 
-            }
-            updateGridLayout(); 
-            break;
+            if (peerConnections[`${message.senderId}-screen`]) { peerConnections[`${message.senderId}-screen`].close(); delete peerConnections[`${message.senderId}-screen`]; }
+            updateGridLayout(); break;
         case 'meeting-paused':
             if (myRole !== 'admin') {
-                isMeetingActive = false; 
-                document.getElementById('meeting-overlay').style.display = 'flex';
-                document.getElementById('main-workspace').style.display = 'none'; 
-                document.getElementById('view-tabs').style.display = 'none'; 
-                document.querySelector('.bottom-bar').style.display = 'none';
+                isMeetingActive = false; document.getElementById('meeting-overlay').style.display = 'flex';
+                document.getElementById('main-workspace').style.display = 'none'; document.getElementById('view-tabs').style.display = 'none'; document.querySelector('.bottom-bar').style.display = 'none';
                 stopAllMediaAndConnections();
-            } 
-            break;
+            } break;
         case 'meeting-resumed':
             if (myRole !== 'admin') {
-                isMeetingActive = true; 
-                document.getElementById('meeting-overlay').style.display = 'none';
-                document.getElementById('main-workspace').style.display = 'flex'; 
-                document.getElementById('view-tabs').style.display = 'flex'; 
-                document.querySelector('.bottom-bar').style.display = 'flex';
+                isMeetingActive = true; document.getElementById('meeting-overlay').style.display = 'none';
+                document.getElementById('main-workspace').style.display = 'flex'; document.getElementById('view-tabs').style.display = 'flex'; document.querySelector('.bottom-bar').style.display = 'flex';
                 initMedia().then(() => { sendSignaling({ type: 'user-joined', client_id: clientId, role: myRole }); });
-            } 
-            break;
+            } break;
         case 'force-action':
             if (message.action === 'mute-mic') toggleAudio(true);
-            if (message.action === 'mute-cam') toggleVideo(true); 
-            break;
+            if (message.action === 'mute-cam') toggleVideo(true); break;
     }
 }
 
-// 🎥 Media & WebRTC Logic
 async function joinRoom(roomId, roomName) {
     currentRoomId = roomId;
-    document.getElementById('rooms-wrapper').style.display = 'none'; 
-    document.getElementById('meet-screen').style.display = 'flex';
-    document.getElementById('current-room-name').innerText = roomName; 
-    document.getElementById('role-display').innerText = myUsername; 
-    document.getElementById('local-avatar').innerText = getInitials(myUsername);
-    await initMedia(); 
-    connectSignaling(); 
-    updateGridLayout(); 
-    refreshUserList();
+    document.getElementById('rooms-wrapper').style.display = 'none'; document.getElementById('meet-screen').style.display = 'flex';
+    document.getElementById('current-room-name').innerText = roomName; document.getElementById('role-display').innerText = myUsername; document.getElementById('local-avatar').innerText = getInitials(myUsername);
+    await initMedia(); connectSignaling(); updateGridLayout(); refreshUserList();
 }
 
 function leaveRoom() {
     stopAllMediaAndConnections();
     isPolling = false;
     fetch(`/api/signaling/leave?nocache=${Date.now()}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: currentRoomId, client_id: clientId}) });
-    document.getElementById('meet-screen').style.display = 'none'; 
-    document.getElementById('rooms-wrapper').style.display = 'flex';
+    document.getElementById('meet-screen').style.display = 'none'; document.getElementById('rooms-wrapper').style.display = 'flex';
     fetchRooms();
 }
 
@@ -429,8 +368,7 @@ function toggleSidebar() { document.getElementById('main-sidebar').classList.tog
 function switchSidebarTab(tabName) {
     document.querySelectorAll('.sb-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.sb-panel').forEach(p => p.classList.remove('active'));
-    event.target.classList.add('active'); 
-    document.getElementById(`panel-${tabName}`).classList.add('active');
+    event.target.classList.add('active'); document.getElementById(`panel-${tabName}`).classList.add('active');
 }
 
 function refreshUserList() {
@@ -440,8 +378,7 @@ function refreshUserList() {
 }
 
 function toggleMenu(menuId) {
-    const menu = document.getElementById(menuId); 
-    const isShowing = menu.classList.contains('show');
+    const menu = document.getElementById(menuId); const isShowing = menu.classList.contains('show');
     document.querySelectorAll('.dropdown-menu, .r-dropdown').forEach(m => m.classList.remove('show'));
     if (!isShowing) menu.classList.add('show');
 }
@@ -478,27 +415,18 @@ async function initMedia() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById('local-video').srcObject = localStream;
-        localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted); 
-        localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
+        localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted); localStream.getVideoTracks().forEach(t => t.enabled = !isVideoMuted);
         attachVolumeMeter(localStream, 'mic-local'); 
     } catch(e) {}
 }
 
 function createPeerConnection(peerId, streamType, isInitiator, stream) {
-    const pcKey = `${peerId}-${streamType}`; 
-    if (peerConnections[pcKey]) return peerConnections[pcKey];
-    
-    const pc = new RTCPeerConnection(configuration); 
-    peerConnections[pcKey] = pc;
-    
+    const pcKey = `${peerId}-${streamType}`; if (peerConnections[pcKey]) return peerConnections[pcKey];
+    const pc = new RTCPeerConnection(configuration); peerConnections[pcKey] = pc;
     if (stream) stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-    pc.onicecandidate = e => { 
-        if (e.candidate) sendSignaling({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }); 
-    };
-    pc.ontrack = e => { 
-        if (e.streams && e.streams[0]) addRemoteVideo(peerId, e.streams[0], streamType); 
-    };
+    pc.onicecandidate = e => { if (e.candidate) sendSignaling({ type: 'ice-candidate', target: peerId, streamType: streamType, candidate: e.candidate, senderId: clientId }); };
+    pc.ontrack = e => { if (e.streams && e.streams[0]) addRemoteVideo(peerId, e.streams[0], streamType); };
 
     if (isInitiator) {
         pc.createOffer().then(offer => {
@@ -555,7 +483,7 @@ function addRemoteVideo(peerId, stream, streamType) {
     video.srcObject = stream; 
     video.autoplay = true; 
     video.playsInline = true; 
-    // Fix for autoplay black screen issue in Safari/Chrome
+    // حل مشکلِ نمایشِ صفحه سیاه در کروم و سافاری:
     if (isScreen) video.muted = true; 
     
     container.appendChild(video);
@@ -580,7 +508,6 @@ function removeUserVideo(peerId) {
     }); updateGridLayout();
 }
 
-// 🎛️ Controls & Actions
 function toggleAudio(forceMute = false) {
     if (!localStream) return; isAudioMuted = forceMute ? true : !isAudioMuted;
     localStream.getAudioTracks().forEach(t => t.enabled = !isAudioMuted);
@@ -612,7 +539,6 @@ function stopAllMediaAndConnections() {
     document.querySelectorAll('.remote-video').forEach(e => e.remove());
 }
 
-// ⏺️ Screen Recording
 async function toggleRecording() {
     const btn = document.getElementById('btn-record');
     if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); btn.classList.remove('record-pulse'); return; }
@@ -635,7 +561,6 @@ function downloadRecording(url, date) {
     const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `BlackMeet_Record_${date.replace(/[/, :]/g, '_')}.mp4`; document.body.appendChild(a); a.click();
 }
 
-// 🖥️ Screen Sharing
 async function toggleScreenShare() {
     if (!isScreenSharing) {
         try {
@@ -665,9 +590,7 @@ function addLocalScreenShare(stream) {
     container.querySelector('video').srcObject = stream; setupDoubleClickHandler(container); document.getElementById('video-grid').appendChild(container); updateGridLayout();
 }
 
-// 💬 Chat System
 function clearChat() { if(confirm("Clear room chat history?")) sendSignaling({ type: 'admin-action', action: 'clear-chat' }); }
-
 function downloadChat() {
     let text = "=== Black Meet Chat History ===\n\n";
     document.querySelectorAll('.chat-msg').forEach(msg => { const name = msg.querySelector('b').innerText; const content = msg.innerText.replace(name, '').trim(); text += `[${name}] ${content}\n`; });

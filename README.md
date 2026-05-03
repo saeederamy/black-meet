@@ -232,37 +232,18 @@ const configuration = {
 Or:
 
 
-### 🔄 Updating to the Latest Version (Screen Share & Config Fix)
-If you are updating from an older version of Black Meet, you need to replace your old frontend logic to apply the new screen-share fixes and the dynamic configuration block.
 
-**Step 1: Delete the old script**
+**Step 6: Delete the old script**
 Navigate to the folder where your `script-ir.js` is located (usually in your `static` or `public` directory) and remove the old file:
 ```bash
-cd /opt/black-meet/static
+#cd /opt/black-meet/static
 sudo rm /opt/black-meet/static/script.js
 sudo nano /opt/black-meet/static/script.js
-sudo systemctl restart black-meet.service
-sudo nginx -t
 ```
 
-**Step 2: Paste the new code and Configure**
-Paste the entirely new `script.js` code. You **no longer need to hunt through the code** to find where to put your TURN server details! Just edit the `SERVER_CONFIG` block at the very top of the file:
-
-```javascript
-// =========================================================
-// ⚙️ MAIN CONFIGURATION (Edit ONLY this section)
-// =========================================================
-const SERVER_CONFIG = {
-    turnDomain: "turn.<your-domain.com>", // 🌐 Your TURN Domain or IP
-    turnPort: "3478",                     // 🔌 Standard Port
-    turnUser: "<YOUR_USERNAME>",          // 👤 TURN Username
-    turnPass: "<YOUR_PASSWORD>"           // 🔑 TURN Password
-};
-// =========================================================
-```
 💾 *Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).*
 
-**Step 3: Restart and Hard Refresh (Crucial ⚠️)**
+**Step 7: Restart and Hard Refresh (Crucial ⚠️)**
 Because browsers cache JavaScript files aggressively, you must restart your backend service and force your browser to fetch the new file.
 
 1. Restart your backend service:
@@ -272,7 +253,7 @@ sudo systemctl restart black-meet.service
 2. Open your website in the browser and press **`Ctrl + F5`** (Windows) or **`Cmd + Shift + R`** (Mac) to perform a Hard Refresh. On mobile, clear your browser cache.
 ---
 
-## 🚀 Step 6: Start and Restart Services
+## 🚀 Step 8: Start and Restart Services
 Apply all configurations by restarting the Coturn service and your main application:
 
 ```bash

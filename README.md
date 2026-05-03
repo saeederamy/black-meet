@@ -217,12 +217,6 @@ const configuration = {
             'urls': 'turn:turn.<your-domain.com>:3478',
             'username': '<YOUR_USERNAME>',
             'credential': '<YOUR_SECURE_PASSWORD>'
-        },
-        {
-            // 🛡️ Route 3: Secure TLS TURN (Anti-Filter Fallback)
-            'urls': 'turns:turn.<your-domain.com>:4433?transport=tcp',
-            'username': '<YOUR_USERNAME>',
-            'credential': '<YOUR_SECURE_PASSWORD>'
         }
     ],
     // 🌍 Remove strict policies so the browser can negotiate the best path

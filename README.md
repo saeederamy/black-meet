@@ -202,7 +202,7 @@ sudo ufw allow 49152:65535/udp
 
 ---
 
-## 💻 Step 5: Frontend Configuration (`script.js`)
+## 💻 Step 5: Frontend Configuration (`script-ir.js`)
 Update your frontend application's `configuration` object exactly like this to allow the browser to auto-switch between standard and secure routes:
 
 ```javascript
